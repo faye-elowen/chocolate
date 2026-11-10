@@ -1,0 +1,1909 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>留白 · 见字如面</title>
+    
+    <!-- 核心依赖 -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://unpkg.com/localforage@1.10.0/dist/localforage.min.js"></script>
+    <script src="https://unpkg.com/sortablejs@1.15.0/Sortable.min.js"></script>
+    <script src="https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@300;400;600&display=swap" rel="stylesheet">
+
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        bg: 'var(--color-bg)', surface: 'var(--color-surface)',
+                        text: 'var(--color-text)', muted: 'var(--color-muted)',
+                        border: 'var(--color-border)', accent: 'var(--color-accent)'
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        :root {
+            --color-bg: #f7f7f9; --color-surface: #ffffff;
+            --color-text: #1a1a1a; --color-muted: #888888;
+            --color-border: #e2e2e2; --color-accent: #000000;
+        }
+        .dark {
+            --color-bg: #0d0d0f; --color-surface: #171719;
+            --color-text: #e6e6e6; --color-muted: #666666;
+            --color-border: #2a2a2a; --color-accent: #ffffff;
+        }
+
+        body {
+            background-color: #d1d5db; margin: 0; overflow: hidden; -webkit-font-smoothing: antialiased;
+        }
+        .dark body { background-color: #050505; }
+        ::-webkit-scrollbar { width: 0px; background: transparent; }
+
+        .app-container {
+            width: 100vw; height: 100vh;
+            background: var(--color-bg); position: relative;
+            display: flex; flex-direction: column; overflow: hidden;
+            transition: background-image 0.3s ease;
+        }
+        @media (min-width: 768px) {
+            .app-container {
+                width: 375px; height: 812px; border-radius: 40px;
+                box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25), inset 0 0 0 8px #000;
+                border: 1px solid #333;
+            }
+        }
+
+        /* 强化气泡玻璃拟态，稳定表现 */
+        .msg-bubble {
+            display: inline-block !important;
+            padding: 8px 12px !important;
+            border-radius: 20px !important;
+            color: rgba(0,0,0,0.85) !important;
+            position: relative !important;
+            background: rgba(255,255,255,0.5) !important;
+            backdrop-filter: blur(12px) !important;
+            -webkit-backdrop-filter: blur(12px) !important;
+            line-height: 1.45 !important;
+            border: 1px solid rgba(255,255,255,0.6) !important;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.8) !important;
+            word-wrap: break-word; max-width: 100%;
+        }
+        .dark .msg-bubble {
+            color: rgba(255,255,255,0.92) !important; background: rgba(30,30,35,0.55) !important;
+            border: 1px solid rgba(255,255,255,0.12) !important;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.05) !important;
+        }
+        .highlight { background-color: rgba(255, 208, 0, 0.5); border-radius: 4px; padding: 0 2px; }
+
+        /* 引用块样式 */
+        .quote-block {
+            display: flex;
+            align-items: flex-start;
+            gap: 6px;
+            padding: 6px 10px;
+            margin-bottom: 6px;
+            background: rgba(0,0,0,0.04);
+            border-left: 2px solid var(--color-accent);
+            border-radius: 6px;
+            font-size: 11px;
+            color: var(--color-muted);
+            line-height: 1.5;
+            max-width: 100%;
+            word-break: break-word;
+        }
+        .dark .quote-block {
+            background: rgba(255,255,255,0.06);
+        }
+        .quote-block i {
+            flex-shrink: 0;
+            margin-top: 2px;
+        }
+        .quote-block span {
+            font-style: italic;
+        }
+
+        /* 入场动画 */
+        .view-enter-active, .view-leave-active { transition: all 0.35s cubic-bezier(0.2, 0.9, 0.4, 1.1); position: absolute; width: 100%; height: 100%; }
+        .view-enter-from { transform: translateX(100%); opacity: 0; }
+        .view-leave-to { transform: translateX(-20%); opacity: 0; }
+        .fade-enter-active, .fade-leave-active { transition: opacity 1.2s ease; }
+        .fade-enter-from, .fade-leave-to { opacity: 0; }
+
+        .intro-overlay { position: fixed; inset: 0; z-index: 100; background: var(--color-bg); display: flex; align-items: center; justify-content: center; }
+        .intro-text { font-family: 'Noto Serif SC', serif; font-size: 22px; font-weight: 300; letter-spacing: 0.4em; opacity: 0; animation: introReveal 3s forwards cubic-bezier(0.2, 0.8, 0.2, 1); }
+        @keyframes introReveal { 0% { opacity: 0; transform: translateY(12px); } 25% { opacity: 1; transform: translateY(0); } 80% { opacity: 1; } 100% { opacity: 0; transform: translateY(-8px); } }
+
+        .glass-header { background: rgba(var(--color-surface-rgb), 0.55); backdrop-filter: blur(10px); border-bottom: 1px solid var(--color-border); }
+        .drag-handle-group, .drag-handle-reply { cursor: grab; }
+        .drag-handle-group:active, .drag-handle-reply:active { cursor: grabbing; }
+        .reply-item { transition: background 0.1s ease; }
+
+        /* 日记卡片 */
+        .diary-card {
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-radius: 20px;
+            padding: 16px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.02);
+            transition: all 0.2s ease;
+        }
+        .dark .diary-card {
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+        .diary-text {
+            font-family: 'Noto Serif SC', serif;
+            font-weight: 300;
+            line-height: 1.8;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        .reply-chip {
+            background: var(--color-bg);
+            border-left: 2px solid var(--color-accent);
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 13px;
+            color: var(--color-muted);
+            font-style: italic;
+        }
+        .timer-badge {
+            font-size: 9px;
+            letter-spacing: 0.5px;
+            background: var(--color-bg);
+            padding: 2px 8px;
+            border-radius: 20px;
+            color: var(--color-muted);
+            border: 1px solid var(--color-border);
+        }
+
+        /* 问卷专用卡片 */
+        .survey-card {
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-radius: 20px;
+            padding: 16px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.02);
+            transition: all 0.2s ease;
+        }
+        .dark .survey-card {
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+        .survey-option {
+            display: flex; align-items: center; gap: 8px;
+            padding: 6px 8px; border-radius: 8px;
+            background: var(--color-bg);
+            border: 1px solid var(--color-border);
+            font-size: 12px; transition: background 0.15s;
+            cursor: pointer;
+        }
+        .survey-option:hover { background: var(--color-surface); }
+        .survey-option.selected { border-color: var(--color-accent); background: var(--color-surface); }
+        .survey-option input[type="checkbox"], .survey-option input[type="radio"] {
+            accent-color: var(--color-accent);
+            width: 14px; height: 14px;
+            margin: 0;
+        }
+        .survey-option-text { flex: 1; word-break: break-word; }
+
+        /* 朋友圈卡片 */
+        .moment-card {
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-radius: 20px;
+            padding: 16px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.02);
+            transition: all 0.2s ease;
+        }
+        .dark .moment-card {
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+        .moment-image-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 4px;
+            margin-top: 8px;
+        }
+        .moment-image-item {
+            aspect-ratio: 1;
+            border-radius: 8px;
+            background-size: cover;
+            background-position: center;
+            border: 1px solid var(--color-border);
+        }
+        .moment-comment {
+            background: var(--color-bg);
+            border-left: 2px solid var(--color-accent);
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 13px;
+            color: var(--color-text);
+            margin-top: 8px;
+            word-break: break-word;
+        }
+        .moment-preview-img {
+            width: 64px; height: 64px;
+            border-radius: 8px;
+            object-fit: cover;
+            border: 1px solid var(--color-border);
+            margin-right: 6px;
+            margin-top: 6px;
+        }
+
+        /* 陪伴功能专用 */
+        .companion-card {
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-radius: 24px;
+            padding: 24px 20px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.04);
+            transition: all 0.3s ease;
+        }
+        .dark .companion-card {
+            box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+        }
+        .companion-timer {
+            font-family: 'Noto Serif SC', serif;
+            font-size: 48px;
+            font-weight: 300;
+            letter-spacing: 0.1em;
+            color: var(--color-text);
+            line-height: 1.2;
+            text-align: center;
+        }
+        .companion-timer small {
+            font-size: 14px;
+            color: var(--color-muted);
+            letter-spacing: 0.2em;
+            display: block;
+            margin-top: 4px;
+        }
+        .companion-status {
+            text-align: center;
+            font-size: 11px;
+            letter-spacing: 0.2em;
+            color: var(--color-muted);
+            margin-top: 8px;
+            min-height: 18px;
+        }
+        .companion-reply {
+            background: var(--color-bg);
+            border-left: 2px solid var(--color-accent);
+            padding: 12px 14px;
+            border-radius: 10px;
+            font-size: 14px;
+            color: var(--color-text);
+            margin-top: 16px;
+            font-family: 'Noto Serif SC', serif;
+            font-weight: 300;
+            line-height: 1.8;
+            word-break: break-word;
+            animation: fadeInUp 0.5s ease;
+        }
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .companion-reply-card {
+            display: inline-block;
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            padding: 4px 10px;
+            border-radius: 14px;
+            margin: 3px 3px 3px 0;
+            font-size: 13px;
+            color: var(--color-text);
+            font-family: 'Noto Serif SC', serif;
+            font-weight: 300;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+        }
+        .companion-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            width: 100%;
+            padding: 14px;
+            border-radius: 16px;
+            font-size: 14px;
+            letter-spacing: 0.15em;
+            transition: all 0.2s ease;
+            cursor: pointer;
+            border: none;
+        }
+        .companion-btn-start {
+            background: var(--color-text);
+            color: var(--color-bg);
+        }
+        .companion-btn-start:hover { opacity: 0.85; transform: scale(0.99); }
+        .companion-btn-stop {
+            background: transparent;
+            color: var(--color-text);
+            border: 1px solid var(--color-border);
+        }
+        .companion-btn-stop:hover { background: var(--color-bg); }
+        .companion-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+        .pulse-dot {
+            display: inline-block;
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            background: var(--color-accent);
+            animation: pulseDot 1.5s infinite ease-in-out;
+            margin-right: 6px;
+        }
+        @keyframes pulseDot {
+            0%, 100% { opacity: 0.3; transform: scale(0.8); }
+            50% { opacity: 1; transform: scale(1.2); }
+        }
+
+        /* 数据管理按钮样式 */
+        .danger-btn {
+            width: 100%;
+            text-align: left;
+            padding: 14px 16px;
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-radius: 14px;
+            color: var(--color-text);
+            font-weight: 300;
+            letter-spacing: 0.05em;
+            transition: all 0.2s ease;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+        }
+        .danger-btn:hover { background: var(--color-bg); }
+        .danger-btn.red { color: #ef4444; }
+        .danger-btn.red:hover { background: rgba(239, 68, 68, 0.05); }
+        .export-btn, .import-btn {
+            width: 100%;
+            text-align: left;
+            padding: 14px 16px;
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-radius: 14px;
+            color: var(--color-text);
+            font-weight: 300;
+            letter-spacing: 0.05em;
+            transition: all 0.2s ease;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+        }
+        .export-btn:hover, .import-btn:hover { background: var(--color-bg); }
+
+        /* 回复时间区间设置样式 */
+        .reply-delay-range {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 0;
+        }
+        .reply-delay-range input[type="number"] {
+            width: 70px;
+            background: var(--color-bg);
+            border: 1px solid var(--color-border);
+            border-radius: 8px;
+            padding: 6px 8px;
+            font-size: 12px;
+            text-align: center;
+            color: var(--color-text);
+        }
+        .reply-delay-range span {
+            color: var(--color-muted);
+            font-size: 12px;
+        }
+
+        /* 陪伴历史删除按钮 */
+        .companion-history-delete {
+            opacity: 0.4;
+            transition: opacity 0.2s, color 0.2s;
+            cursor: pointer;
+            color: var(--color-muted);
+        }
+        .companion-history-delete:hover {
+            opacity: 1;
+            color: #ef4444;
+        }
+    </style>
+    <style id="custom-css-injection"></style>
+</head>
+<body class="flex justify-center items-center h-screen w-screen transition-colors duration-300">
+
+<div id="app" v-cloak>
+    <transition name="fade">
+        <div v-if="showIntro" class="intro-overlay text-text">
+            <div class="intro-text">见字如面</div>
+        </div>
+    </transition>
+
+    <div class="app-container text-sm" :style="appBgStyle">
+        <transition name="view">
+            <!-- 主屏幕 -->
+            <div v-if="currentView === 'home'" key="home" class="absolute inset-0 flex flex-col pt-24 px-8 z-10 bg-bg overflow-y-auto">
+                <div class="mb-10">
+                    <h1 class="text-4xl serif-text tracking-widest mb-2 font-semibold text-text">留白</h1>
+                    <p class="text-[10px] text-muted tracking-widest font-light">境随心转 · 万物生辉</p>
+                </div>
+                <div class="grid grid-cols-4 gap-6">
+                    <div class="flex flex-col items-center gap-2 group cursor-pointer" @click="switchView('chat')">
+                        <div class="w-14 h-14 bg-accent text-bg rounded-2xl flex items-center justify-center shadow-lg transition-transform group-hover:scale-105 relative">
+                            <i data-lucide="feather" class="w-6 h-6 stroke-[1.5]"></i>
+                            <div v-if="unreadCount > 0" class="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center border border-bg">{{ unreadCount }}</div>
+                        </div>
+                        <span class="text-[11px] font-light tracking-widest">交谈</span>
+                    </div>
+                    <div class="flex flex-col items-center gap-2 group cursor-pointer" @click="switchView('library')">
+                        <div class="w-14 h-14 bg-surface border border-border text-text rounded-2xl flex items-center justify-center shadow-sm transition-transform group-hover:scale-105">
+                            <i data-lucide="library" class="w-6 h-6 stroke-[1.5]"></i>
+                        </div>
+                        <span class="text-[11px] font-light tracking-widest">语料</span>
+                    </div>
+                    <div class="flex flex-col items-center gap-2 group cursor-pointer" @click="switchView('diary')">
+                        <div class="w-14 h-14 bg-surface border border-border text-text rounded-2xl flex items-center justify-center shadow-sm transition-transform group-hover:scale-105">
+                            <i data-lucide="book-open" class="w-6 h-6 stroke-[1.5]"></i>
+                        </div>
+                        <span class="text-[11px] font-light tracking-widest">日记</span>
+                    </div>
+                    <div class="flex flex-col items-center gap-2 group cursor-pointer" @click="switchView('insight')">
+                        <div class="w-14 h-14 bg-surface border border-border text-text rounded-2xl flex items-center justify-center shadow-sm transition-transform group-hover:scale-105">
+                            <i data-lucide="pie-chart" class="w-6 h-6 stroke-[1.5]"></i>
+                        </div>
+                        <span class="text-[11px] font-light tracking-widest">洞察</span>
+                    </div>
+                </div>
+                <div class="grid grid-cols-4 gap-6 mt-6">
+                    <div class="flex flex-col items-center gap-2 group cursor-pointer" @click="switchView('survey')">
+                        <div class="w-14 h-14 bg-surface border border-border text-text rounded-2xl flex items-center justify-center shadow-sm transition-transform group-hover:scale-105">
+                            <i data-lucide="clipboard-list" class="w-6 h-6 stroke-[1.5]"></i>
+                        </div>
+                        <span class="text-[11px] font-light tracking-widest">问卷</span>
+                    </div>
+                    <div class="flex flex-col items-center gap-2 group cursor-pointer" @click="switchView('moments')">
+                        <div class="w-14 h-14 bg-surface border border-border text-text rounded-2xl flex items-center justify-center shadow-sm transition-transform group-hover:scale-105">
+                            <i data-lucide="image" class="w-6 h-6 stroke-[1.5]"></i>
+                        </div>
+                        <span class="text-[11px] font-light tracking-widest">朋友圈</span>
+                    </div>
+                    <div class="flex flex-col items-center gap-2 group cursor-pointer" @click="switchView('companion')">
+                        <div class="w-14 h-14 bg-surface border border-border text-text rounded-2xl flex items-center justify-center shadow-sm transition-transform group-hover:scale-105">
+                            <i data-lucide="heart-handshake" class="w-6 h-6 stroke-[1.5]"></i>
+                        </div>
+                        <span class="text-[11px] font-light tracking-widest">陪伴</span>
+                    </div>
+                    <div class="flex flex-col items-center gap-2 group cursor-pointer" @click="switchView('settings')">
+                        <div class="w-14 h-14 bg-surface border border-border text-text rounded-2xl flex items-center justify-center shadow-sm transition-transform group-hover:scale-105">
+                            <i data-lucide="sliders-horizontal" class="w-6 h-6 stroke-[1.5]"></i>
+                        </div>
+                        <span class="text-[11px] font-light tracking-widest">偏好</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 交谈视图 -->
+            <div v-else-if="currentView === 'chat'" key="chat" class="absolute inset-0 flex flex-col z-20">
+                <header class="h-14 flex items-center justify-between px-3 border-b border-border/40 shrink-0 bg-surface/60 backdrop-blur-md">
+                    <div class="flex items-center gap-2">
+                        <button @click="switchView('home')" class="p-2 -ml-1 text-text hover:opacity-60"><i data-lucide="chevron-left" class="w-5 h-5 stroke-[1.5]"></i></button>
+                        <div class="flex items-center gap-2 group cursor-pointer">
+                            <div v-if="settings.showAvatar" @click.stop="editAvatar('them')" class="w-8 h-8 bg-surface border border-border/50 flex items-center justify-center overflow-hidden shadow-sm" :style="{ borderRadius: settings.avatarRadius + '%' }">
+                                <img v-if="profiles.them.avatar" :src="profiles.them.avatar" class="w-full h-full object-cover">
+                                <span v-else class="text-xs text-muted serif-text">{{ profiles.them.name.charAt(0) }}</span>
+                            </div>
+                            <div class="flex flex-col" @click.stop="editName('them')">
+                                <span class="text-[14px] font-medium tracking-widest hover:underline underline-offset-4">{{ profiles.them.name }}</span>
+                                <span v-if="isTyping" class="text-[9px] text-muted tracking-widest absolute top-10">落笔中...</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-1">
+                        <button @click="toggleSearch" class="p-2 text-muted hover:text-text"><i data-lucide="search" class="w-4 h-4 stroke-[1.5]"></i></button>
+                        <button @click="captureScreenshot" class="p-2 text-muted hover:text-text"><i data-lucide="camera" class="w-4 h-4 stroke-[1.5]"></i></button>
+                    </div>
+                </header>
+
+                <div v-if="chatState.isSearching" class="bg-surface/90 backdrop-blur px-4 py-2 flex items-center gap-2 border-b border-border/40 text-xs shrink-0 z-10">
+                    <i data-lucide="search" class="w-3 h-3 text-muted"></i>
+                    <input v-model="chatState.keyword" type="text" placeholder="寻觅留白..." class="flex-1 bg-transparent font-light" @input="executeSearch">
+                    <span v-if="chatState.results.length" class="text-muted text-[10px]">{{ chatState.currentIdx + 1 }}/{{ chatState.results.length }}</span>
+                    <button @click="jumpSearch(-1)" class="p-1 text-text disabled:opacity-30" :disabled="!chatState.results.length"><i data-lucide="chevron-up" class="w-3 h-3"></i></button>
+                    <button @click="jumpSearch(1)" class="p-1 text-text disabled:opacity-30" :disabled="!chatState.results.length"><i data-lucide="chevron-down" class="w-3 h-3"></i></button>
+                    <button @click="toggleSearch" class="p-1 text-red-400"><i data-lucide="x" class="w-3 h-3"></i></button>
+                </div>
+
+                <main id="chat-container" class="flex-1 overflow-y-auto px-4 py-6 pb-24 scroll-smooth">
+                    <div id="capture-area" class="pb-10">
+                        <div v-for="(msg, index) in messages" :key="msg.id" :id="'msg-'+msg.id" class="mb-5 relative group flex" :class="msg.sender === 'me' ? 'justify-end' : 'justify-start'">
+                            <div class="flex max-w-[85%] gap-2" :class="msg.sender === 'me' ? 'flex-row-reverse' : 'flex-row'">
+                                <div v-if="settings.showAvatar" class="shrink-0 w-7 h-7 mt-1 cursor-pointer" :class="{'opacity-0': !shouldShowAvatar(index)}" @click="editAvatar(msg.sender)">
+                                    <div class="w-full h-full bg-surface border border-border/50 flex items-center justify-center overflow-hidden" :style="{ borderRadius: settings.avatarRadius + '%' }">
+                                        <img v-if="profiles[msg.sender].avatar" :src="profiles[msg.sender].avatar" class="w-full h-full object-cover">
+                                        <span v-else class="text-[10px] text-muted serif-text">{{ profiles[msg.sender].name.charAt(0) }}</span>
+                                    </div>
+                                </div>
+                                <div class="flex flex-col relative" :class="msg.sender === 'me' ? 'items-end' : 'items-start'">
+                                    <button @click="deleteMsg(msg.id)" class="absolute top-0 opacity-0 group-hover:opacity-100 transition-opacity text-muted hover:text-red-500 p-1 bg-surface/70 rounded-full shadow-sm backdrop-blur" :class="msg.sender === 'me' ? '-left-7' : '-right-7'">
+                                        <i data-lucide="trash-2" class="w-3 h-3 stroke-[1.5]"></i>
+                                    </button>
+                                    <!-- 引用块：仅对方消息且存在quote时显示 -->
+                                    <div v-if="msg.sender === 'them' && msg.quote" class="quote-block">
+                                        <i data-lucide="quote" class="w-3 h-3"></i>
+                                        <span>{{ msg.quote }}</span>
+                                    </div>
+                                    <div class="msg-bubble custom-css-target" :class="settings.fontFamily === 'serif' ? 'serif-text' : 'sans-text'" :style="{ fontSize: settings.fontSize + 'px' }" v-html="highlightText(msg.content, msg.isTyping)"></div>
+                                    <div class="flex items-center gap-2 mt-1 px-1">
+                                        <span class="text-[9px] tracking-wider text-muted/80 bg-surface/30 px-1 rounded">{{ formatTime(msg.timestamp) }}</span>
+                                        <span v-if="msg.sender === 'me'" class="text-[9px] tracking-widest bg-surface/30 px-1 rounded" :class="msg.status === 'read' ? 'text-text' : 'text-muted'">{{ msg.status === 'read' ? '已读' : '未读' }}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div v-if="messages.length === 0" class="mt-32 flex flex-col items-center justify-center opacity-30 text-muted">
+                            <span class="text-xs font-light tracking-widest serif-text">此处尚无回音</span>
+                        </div>
+                    </div>
+                </main>
+
+                <footer class="absolute bottom-0 left-0 right-0 p-3 bg-surface/70 backdrop-blur-xl border-t border-border/30 shrink-0">
+                    <div class="flex items-end gap-2 bg-surface/80 border border-border/60 rounded-2xl px-3 py-1.5 focus-within:border-muted transition-colors shadow-sm">
+                        <button @click="forceReply" :disabled="isTyping" class="p-2 -ml-1 text-muted hover:text-text disabled:opacity-30"><i data-lucide="radio" class="w-5 h-5 stroke-[1.5]"></i></button>
+                        <textarea v-model="inputText" @keydown.enter.prevent="handleSend" @input="saveDraft" rows="1" class="flex-1 py-2 text-[14px] resize-none max-h-24 font-light tracking-wide placeholder:text-muted/60 leading-relaxed bg-transparent" placeholder="书写..."></textarea>
+                        <button @click="handleSend" class="p-2 -mr-1 text-text hover:opacity-50 transition-opacity shrink-0"><i data-lucide="arrow-up" class="w-5 h-5 stroke-[2]"></i></button>
+                    </div>
+                </footer>
+            </div>
+
+            <!-- 语料库 -->
+            <div v-else-if="currentView === 'library'" key="library" class="absolute inset-0 flex flex-col z-20 bg-bg">
+                <header class="h-14 flex items-center justify-between px-4 border-b border-border shrink-0 bg-surface">
+                    <button @click="switchView('home')" class="p-2 -ml-2 text-text hover:opacity-60"><i data-lucide="chevron-left" class="w-5 h-5 stroke-[1.5]"></i></button>
+                    <span class="text-[13px] font-medium tracking-widest serif-text">归档语料</span>
+                    <div class="flex gap-1">
+                        <button @click="exportLibrary" class="p-2 text-muted hover:text-text"><i data-lucide="download" class="w-4 h-4 stroke-[1.5]"></i></button>
+                        <label class="p-2 text-muted hover:text-text cursor-pointer"><i data-lucide="upload" class="w-4 h-4 stroke-[1.5]"></i><input type="file" accept=".json" class="hidden" @change="importLibrary"></label>
+                    </div>
+                </header>
+
+                <div class="px-4 py-2 bg-surface border-b border-border flex flex-wrap items-center gap-2 shrink-0">
+                    <button @click="toggleBatchImport" class="flex items-center gap-1.5 text-[11px] font-light tracking-wider px-3 py-1.5 rounded-md border transition-colors"
+                            :class="showBatchImport ? 'bg-text text-bg border-text' : 'bg-bg text-text border-border hover:border-muted'">
+                        <i data-lucide="layers" class="w-3.5 h-3.5"></i> 批量字卡
+                    </button>
+                    <span v-if="!showBatchImport" class="text-[10px] text-muted/60">一行一句，批量添入</span>
+                    <template v-else>
+                        <span class="text-[10px] text-muted">每行一句 · 归入</span>
+                        <select v-model="batchImportGroupId" class="text-[10px] bg-bg border border-border rounded px-1.5 py-0.5 focus:outline-none">
+                            <option v-for="group in replyGroups" :key="group.id" :value="group.id">{{ group.name }}</option>
+                        </select>
+                        <span class="text-[10px] text-muted/60 ml-auto">(空行忽略)</span>
+                    </template>
+                </div>
+
+                <transition name="fade">
+                    <div v-if="showBatchImport" class="px-4 py-3 bg-surface border-b border-border shrink-0">
+                        <textarea v-model="batchImportText" rows="5" 
+                                  class="w-full bg-bg border border-border rounded-lg p-3 text-[12px] font-light resize-none focus:outline-none focus:border-text placeholder:text-muted/40"
+                                  placeholder="在此粘贴或输入多行文本，一行一句……&#10;例如：&#10;今日天气正好&#10;忽然想起了你&#10;窗外的叶子落了"></textarea>
+                        <div class="flex items-center justify-between mt-2">
+                            <span class="text-[10px] text-muted">将导入 <span class="font-medium text-text">{{ batchLineCount }}</span> 句</span>
+                            <div class="flex gap-2">
+                                <button @click="clearBatchImport" class="text-[11px] text-muted hover:text-text px-3 py-1 border border-border rounded-md transition-colors">清空</button>
+                                <button @click="importBatchLines" :disabled="!batchLineCount" 
+                                        class="text-[11px] bg-text text-bg px-4 py-1 rounded-md disabled:opacity-30 disabled:cursor-not-allowed transition-opacity flex items-center gap-1">
+                                    <i data-lucide="check" class="w-3 h-3"></i> 导入
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </transition>
+
+                <div class="px-4 py-3 bg-surface border-b border-border flex items-center gap-2 shrink-0 text-xs">
+                    <div class="flex-1 relative">
+                        <i data-lucide="search" class="w-3 h-3 absolute left-2 top-1/2 -translate-y-1/2 text-muted"></i>
+                        <input v-model="libSearchQuery" placeholder="筛选..." class="w-full bg-bg rounded-md py-1.5 pl-7 pr-2 font-light border border-transparent focus:border-border">
+                    </div>
+                    <button v-if="selectedRepliesArr.length" @click="batchDelete" class="text-red-500 hover:underline text-[11px]">剔除({{selectedRepliesArr.length}})</button>
+                    <button v-if="selectedRepliesArr.length" @click="batchToggle" class="text-text hover:underline text-[11px]">启/禁</button>
+                </div>
+
+                <main class="flex-1 overflow-y-auto p-4 space-y-8" id="library-groups">
+                    <div v-for="group in filteredGroups" :key="group.id" class="group-item relative" :data-id="group.id">
+                        <div class="flex items-center justify-between mb-3">
+                            <div class="flex items-center gap-2">
+                                <div class="cursor-grab active:cursor-grabbing p-1 -ml-1 text-muted hover:text-text drag-handle-group"><i data-lucide="grip-vertical" class="w-4 h-4"></i></div>
+                                <input v-model="group.name" @blur="debouncedSave" class="font-medium text-[14px] tracking-widest w-36 border-b border-transparent hover:border-border focus:border-text bg-transparent px-1">
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <button @click="addReplyToGroup(group.id)" class="text-muted hover:text-text text-[11px] flex items-center gap-1"><i data-lucide="plus" class="w-3 h-3"></i> 添加</button>
+                                <button @click="deleteGroup(group.id)" class="text-muted hover:text-red-500"><i data-lucide="trash" class="w-3.5 h-3.5"></i></button>
+                            </div>
+                        </div>
+                        <div class="bg-surface border border-border rounded-xl overflow-hidden reply-list" :data-group-id="group.id">
+                            <div v-if="!group.replies.length" class="p-5 text-center text-xs text-muted/50 font-light">空寂无声</div>
+                            <div v-for="reply in group.replies" :key="reply.id" class="reply-item flex items-center gap-3 p-3.5 border-b border-border/50 last:border-0 group/reply" :data-id="reply.id" :class="{'bg-bg/40': !reply.enabled}">
+                                <i data-lucide="grip-horizontal" class="w-3.5 h-3.5 text-muted drag-handle-reply cursor-grab shrink-0 opacity-60 hover:opacity-100"></i>
+                                <input type="checkbox" :value="reply.id" v-model="selectedRepliesArr" class="accent-text shrink-0">
+                                <input v-model="reply.text" @blur="debouncedSave" class="flex-1 text-[13px] font-light bg-transparent" :class="{'text-muted line-through decoration-muted/40': !reply.enabled}" placeholder="留白一句">
+                                <button @click="toggleReplyEnable(reply)" class="w-8 h-4 rounded-full relative transition-colors duration-200 shrink-0" :class="reply.enabled ? 'bg-text' : 'bg-border'">
+                                    <div class="absolute top-0.5 left-0.5 w-3 h-3 bg-surface rounded-full transition-transform duration-200" :class="reply.enabled ? 'translate-x-4' : 'translate-x-0'"></div>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <button @click="addGroup" class="w-full py-4 border border-dashed border-border rounded-xl text-xs text-muted hover:text-text hover:border-muted transition-colors flex items-center justify-center gap-2 font-light tracking-widest mt-4">
+                        <i data-lucide="folder-plus" class="w-4 h-4 stroke-[1.5]"></i> 新辟卷宗
+                    </button>
+                </main>
+            </div>
+
+            <!-- 日记视图 -->
+            <div v-else-if="currentView === 'diary'" key="diary" class="absolute inset-0 flex flex-col z-20 bg-bg">
+                <header class="h-14 flex items-center justify-between px-4 border-b border-border shrink-0 bg-surface">
+                    <button @click="switchView('home')" class="p-2 -ml-2 text-text hover:opacity-60"><i data-lucide="chevron-left" class="w-5 h-5 stroke-[1.5]"></i></button>
+                    <span class="text-[13px] font-medium tracking-widest serif-text">日记 · 留白</span>
+                    <div class="w-9"></div>
+                </header>
+
+                <main class="flex-1 overflow-y-auto p-4 space-y-5 pb-24">
+                    <div class="diary-card">
+                        <div class="flex items-center gap-2 mb-3 text-muted">
+                            <i data-lucide="pen-line" class="w-4 h-4"></i>
+                            <span class="text-[11px] tracking-widest font-light">今日落笔</span>
+                        </div>
+                        <textarea v-model="newDiaryText" rows="4" 
+                                  class="w-full bg-bg border border-border rounded-xl p-3 text-[13px] font-light resize-none focus:outline-none focus:border-text placeholder:text-muted/40 diary-text"
+                                  placeholder="写下此刻的心绪……"></textarea>
+                        <div class="flex justify-end mt-3">
+                            <button @click="addDiary" :disabled="!newDiaryText.trim()" 
+                                    class="bg-text text-bg px-5 py-2 rounded-xl text-[12px] tracking-wider disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-2 transition-opacity">
+                                <i data-lucide="send" class="w-3.5 h-3.5"></i> 封存
+                            </button>
+                        </div>
+                    </div>
+
+                    <div v-for="diary in diaries" :key="diary.id" class="diary-card">
+                        <div class="flex justify-between items-start mb-2">
+                            <div class="text-[10px] text-muted tracking-wider">{{ formatDiaryTime(diary.timestamp) }}</div>
+                            <div v-if="diary.reply" class="timer-badge flex items-center gap-1">
+                                <i data-lucide="corner-down-right" class="w-2.5 h-2.5"></i> 已有回音
+                            </div>
+                            <div v-else class="timer-badge flex items-center gap-1">
+                                <i data-lucide="hourglass" class="w-2.5 h-2.5"></i> 静候回音 ({{ getRemainingTime(diary) }})
+                            </div>
+                        </div>
+                        <div class="diary-text text-[14px] text-text mb-3">{{ diary.text }}</div>
+                        <div v-if="diary.reply" class="reply-chip mt-2">
+                            <i data-lucide="message-circle" class="w-3 h-3 inline mr-1 opacity-50"></i>
+                            {{ diary.reply }}
+                        </div>
+                        <div v-if="!diary.reply" class="flex justify-end mt-2">
+                            <button @click="deleteDiary(diary.id)" class="text-muted hover:text-red-500 text-[10px] flex items-center gap-1 opacity-50 hover:opacity-100 transition-opacity">
+                                <i data-lucide="trash" class="w-3 h-3"></i> 焚毁
+                            </button>
+                        </div>
+                    </div>
+
+                    <div v-if="diaries.length === 0" class="flex flex-col items-center justify-center py-20 opacity-30 text-muted">
+                        <i data-lucide="book-open" class="w-8 h-8 mb-3 stroke-[1]"></i>
+                        <span class="text-xs font-light tracking-widest serif-text">尚无日记，落笔即永恒</span>
+                    </div>
+                </main>
+            </div>
+
+            <!-- 问卷视图 -->
+            <div v-else-if="currentView === 'survey'" key="survey" class="absolute inset-0 flex flex-col z-20 bg-bg">
+                <header class="h-14 flex items-center justify-between px-4 border-b border-border shrink-0 bg-surface">
+                    <button @click="switchView('home')" class="p-2 -ml-2 text-text hover:opacity-60"><i data-lucide="chevron-left" class="w-5 h-5 stroke-[1.5]"></i></button>
+                    <span class="text-[13px] font-medium tracking-widest serif-text">问卷 · 问答</span>
+                    <div class="w-9"></div>
+                </header>
+
+                <main class="flex-1 overflow-y-auto p-4 space-y-5 pb-24">
+                    <div class="survey-card">
+                        <div class="flex items-center gap-2 mb-3 text-muted">
+                            <i data-lucide="file-question" class="w-4 h-4"></i>
+                            <span class="text-[11px] tracking-widest font-light">拟一卷问卷</span>
+                        </div>
+                        <input v-model="newSurvey.title" placeholder="问卷标题" 
+                               class="w-full bg-bg border border-border rounded-xl p-3 text-[13px] font-light mb-3 focus:outline-none focus:border-text placeholder:text-muted/40">
+                        
+                        <div v-for="(q, qi) in newSurvey.questions" :key="qi" class="mb-3 p-3 bg-bg rounded-xl border border-border">
+                            <div class="flex items-center gap-2 mb-2">
+                                <span class="text-[10px] text-muted shrink-0">Q{{ qi+1 }}</span>
+                                <input v-model="q.text" placeholder="问题内容" class="flex-1 bg-transparent border-b border-border/60 text-[12px] py-1 focus:outline-none focus:border-text placeholder:text-muted/40">
+                                <select v-model="q.type" class="text-[10px] bg-surface border border-border rounded px-1.5 py-0.5">
+                                    <option value="single">单选</option>
+                                    <option value="multiple">多选</option>
+                                </select>
+                                <button @click="removeQuestion(qi)" class="text-muted hover:text-red-500"><i data-lucide="x" class="w-3.5 h-3.5"></i></button>
+                            </div>
+                            <div class="space-y-1.5 ml-6">
+                                <div v-for="(opt, oi) in q.options" :key="oi" class="flex items-center gap-2">
+                                    <span class="text-[9px] text-muted w-4">{{ String.fromCharCode(65+oi) }}</span>
+                                    <input v-model="q.options[oi]" placeholder="选项内容" class="flex-1 bg-transparent border-b border-border/40 text-[11px] py-0.5 focus:outline-none focus:border-text placeholder:text-muted/40">
+                                    <button @click="removeOption(qi, oi)" class="text-muted hover:text-red-500"><i data-lucide="trash-2" class="w-3 h-3"></i></button>
+                                </div>
+                                <button @click="addOption(qi)" class="text-[10px] text-muted hover:text-text flex items-center gap-1 mt-1">
+                                    <i data-lucide="plus" class="w-3 h-3"></i> 添加选项
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="flex justify-between mt-3">
+                            <button @click="addQuestion" class="text-[11px] text-muted hover:text-text flex items-center gap-1">
+                                <i data-lucide="plus-circle" class="w-3.5 h-3.5"></i> 添加问题
+                            </button>
+                            <button @click="sendSurvey" :disabled="!canSendSurvey" 
+                                    class="bg-text text-bg px-5 py-2 rounded-xl text-[12px] tracking-wider disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-2 transition-opacity">
+                                <i data-lucide="send" class="w-3.5 h-3.5"></i> 发送问卷
+                            </button>
+                        </div>
+                    </div>
+
+                    <div v-for="survey in surveys" :key="survey.id" class="survey-card">
+                        <div class="flex justify-between items-start mb-2">
+                            <div class="text-[10px] text-muted tracking-wider">{{ formatDiaryTime(survey.timestamp) }}</div>
+                            <div v-if="survey.reply" class="timer-badge flex items-center gap-1">
+                                <i data-lucide="corner-down-right" class="w-2.5 h-2.5"></i> 已回复
+                            </div>
+                            <div v-else class="timer-badge flex items-center gap-1">
+                                <i data-lucide="hourglass" class="w-2.5 h-2.5"></i> 静候回音 ({{ getSurveyRemainingTime(survey) }})
+                            </div>
+                        </div>
+                        <div class="font-medium text-[14px] mb-2">{{ survey.title }}</div>
+                        <div v-for="(q, qi) in survey.questions" :key="qi" class="mb-2">
+                            <div class="text-[12px] text-text mb-1">{{ qi+1 }}. {{ q.text }} <span class="text-[10px] text-muted">({{ q.type === 'single' ? '单选' : '多选' }})</span></div>
+                            <div class="flex flex-wrap gap-1.5">
+                                <span v-for="(opt, oi) in q.options" :key="oi" 
+                                      class="text-[11px] px-2 py-0.5 rounded bg-bg border border-border/60"
+                                      :class="survey.reply && survey.reply[qi] && (Array.isArray(survey.reply[qi]) ? survey.reply[qi].includes(opt) : survey.reply[qi] === opt) ? 'border-text bg-surface text-text font-medium' : 'text-muted'">
+                                    {{ opt }}
+                                </span>
+                            </div>
+                        </div>
+                        <div v-if="!survey.reply" class="flex justify-end mt-2">
+                            <button @click="deleteSurvey(survey.id)" class="text-muted hover:text-red-500 text-[10px] flex items-center gap-1 opacity-50 hover:opacity-100 transition-opacity">
+                                <i data-lucide="trash" class="w-3 h-3"></i> 焚毁
+                            </button>
+                        </div>
+                    </div>
+
+                    <div v-if="surveys.length === 0" class="flex flex-col items-center justify-center py-20 opacity-30 text-muted">
+                        <i data-lucide="clipboard-list" class="w-8 h-8 mb-3 stroke-[1]"></i>
+                        <span class="text-xs font-light tracking-widest serif-text">尚无问卷，问心即答</span>
+                    </div>
+                </main>
+            </div>
+
+            <!-- 朋友圈视图 -->
+            <div v-else-if="currentView === 'moments'" key="moments" class="absolute inset-0 flex flex-col z-20 bg-bg">
+                <header class="h-14 flex items-center justify-between px-4 border-b border-border shrink-0 bg-surface">
+                    <button @click="switchView('home')" class="p-2 -ml-2 text-text hover:opacity-60"><i data-lucide="chevron-left" class="w-5 h-5 stroke-[1.5]"></i></button>
+                    <span class="text-[13px] font-medium tracking-widest serif-text">朋友圈 · 瞬间</span>
+                    <div class="w-9"></div>
+                </header>
+
+                <main class="flex-1 overflow-y-auto p-4 space-y-5 pb-24">
+                    <div class="moment-card">
+                        <div class="flex items-center gap-2 mb-3 text-muted">
+                            <i data-lucide="camera" class="w-4 h-4"></i>
+                            <span class="text-[11px] tracking-widest font-light">此刻瞬间</span>
+                        </div>
+                        <textarea v-model="newMomentText" rows="3" 
+                                  class="w-full bg-bg border border-border rounded-xl p-3 text-[13px] font-light resize-none focus:outline-none focus:border-text placeholder:text-muted/40"
+                                  placeholder="分享此刻的留白……"></textarea>
+                        
+                        <div v-if="newMomentImages.length" class="flex flex-wrap gap-2 mt-2">
+                            <div v-for="(img, idx) in newMomentImages" :key="idx" class="relative group">
+                                <img :src="img" class="moment-preview-img">
+                                <button @click="removeMomentImage(idx)" class="absolute -top-2 -right-2 w-5 h-5 bg-surface text-red-500 rounded-full shadow border border-border flex items-center justify-center text-xs">×</button>
+                            </div>
+                        </div>
+                        
+                        <div class="flex items-center justify-between mt-3">
+                            <label class="text-muted hover:text-text cursor-pointer flex items-center gap-1 text-[11px]">
+                                <i data-lucide="image-plus" class="w-4 h-4"></i> 添加图片
+                                <input type="file" accept="image/*" multiple class="hidden" @change="handleMomentImageUpload">
+                            </label>
+                            <button @click="publishMoment" :disabled="!canPublishMoment" 
+                                    class="bg-text text-bg px-5 py-2 rounded-xl text-[12px] tracking-wider disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-2 transition-opacity">
+                                <i data-lucide="send" class="w-3.5 h-3.5"></i> 发布
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- 已发布的朋友圈 -->
+                    <div v-for="moment in moments" :key="moment.id" class="moment-card">
+                        <div class="flex justify-between items-start mb-2">
+                            <div class="text-[10px] text-muted tracking-wider">{{ formatDiaryTime(moment.timestamp) }}</div>
+                            <div class="flex items-center gap-2">
+                                <div v-if="moment.comment" class="timer-badge flex items-center gap-1">
+                                    <i data-lucide="message-circle" class="w-2.5 h-2.5"></i> 有回音
+                                </div>
+                                <div v-else-if="moment.noComment" class="timer-badge flex items-center gap-1">
+                                    <i data-lucide="eye-off" class="w-2.5 h-2.5"></i> 已读不回
+                                </div>
+                                <div v-else class="timer-badge flex items-center gap-1">
+                                    <i data-lucide="hourglass" class="w-2.5 h-2.5"></i> 静候回音 ({{ getMomentRemainingTime(moment) }})
+                                </div>
+                                <button @click="deleteMoment(moment.id)" class="text-muted hover:text-red-500 p-1 transition-colors" title="删除朋友圈">
+                                    <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="diary-text text-[14px] text-text mb-2">{{ moment.text }}</div>
+                        <div v-if="moment.images.length" class="moment-image-grid mb-2">
+                            <div v-for="(img, idx) in moment.images" :key="idx" class="moment-image-item" :style="{ backgroundImage: `url(${img})` }"></div>
+                        </div>
+                        <div v-if="moment.comment" class="moment-comment">
+                            <i data-lucide="message-circle" class="w-3 h-3 inline mr-1 opacity-50"></i>
+                            <span>{{ moment.comment }}</span>
+                        </div>
+                    </div>
+
+                    <div v-if="moments.length === 0" class="flex flex-col items-center justify-center py-20 opacity-30 text-muted">
+                        <i data-lucide="image" class="w-8 h-8 mb-3 stroke-[1]"></i>
+                        <span class="text-xs font-light tracking-widest serif-text">尚无瞬间，分享即永恒</span>
+                    </div>
+                </main>
+            </div>
+
+            <!-- 陪伴视图 -->
+            <div v-else-if="currentView === 'companion'" key="companion" class="absolute inset-0 flex flex-col z-20 bg-bg">
+                <header class="h-14 flex items-center justify-between px-4 border-b border-border shrink-0 bg-surface">
+                    <button @click="switchView('home')" class="p-2 -ml-2 text-text hover:opacity-60"><i data-lucide="chevron-left" class="w-5 h-5 stroke-[1.5]"></i></button>
+                    <span class="text-[13px] font-medium tracking-widest serif-text">陪伴 · 静默</span>
+                    <div class="w-9"></div>
+                </header>
+
+                <main class="flex-1 overflow-y-auto p-5 space-y-5 pb-24 flex flex-col">
+                    <div class="companion-card">
+                        <div class="flex items-center justify-center gap-2 mb-2 text-muted text-[10px] tracking-widest">
+                            <span class="pulse-dot" v-if="companionRunning"></span>
+                            <span>{{ companionRunning ? '陪伴中' : '静待启程' }}</span>
+                        </div>
+                        <div class="companion-timer">
+                            {{ formatCompanionTime(companionElapsed) }}
+                            <small>分 : 秒</small>
+                        </div>
+                        <div class="companion-status">
+                            <span v-if="companionRunning">此刻无言，唯余存在</span>
+                            <span v-else-if="companionReplyText">陪伴已结束，回音将至</span>
+                            <span v-else>点击下方按钮，开始一段静默陪伴</span>
+                        </div>
+
+                        <div class="mt-6 flex flex-col gap-3">
+                            <button v-if="!companionRunning" @click="startCompanion" 
+                                    class="companion-btn companion-btn-start">
+                                <i data-lucide="play" class="w-4 h-4"></i> 开始陪伴
+                            </button>
+                            <button v-else @click="stopCompanion" 
+                                    class="companion-btn companion-btn-stop">
+                                <i data-lucide="square" class="w-4 h-4"></i> 结束陪伴
+                            </button>
+                        </div>
+
+                        <div v-if="companionReplyText" class="companion-reply mt-5">
+                            <div class="text-[10px] text-muted tracking-widest mb-2 flex items-center gap-1">
+                                <i data-lucide="message-circle" class="w-3 h-3"></i> 陪伴回音
+                            </div>
+                            <div v-if="companionReplyCards.length" class="flex flex-wrap gap-1.5">
+                                <span v-for="(card, idx) in companionReplyCards" :key="idx" class="companion-reply-card">{{ card }}</span>
+                            </div>
+                            <div v-else class="text-muted italic text-[13px]">……</div>
+                        </div>
+                    </div>
+
+                    <!-- 过往陪伴记录 -->
+                    <div v-if="companionHistory.length" class="space-y-3">
+                        <div class="text-[10px] text-muted tracking-widest px-1">过往陪伴</div>
+                        <div v-for="record in companionHistory" :key="record.id" class="bg-surface border border-border rounded-xl p-3">
+                            <div class="flex justify-between text-[10px] text-muted mb-1">
+                                <span>{{ formatDiaryTime(record.startTime) }}</span>
+                                <div class="flex items-center gap-2">
+                                    <span>时长 {{ formatCompanionTime(record.duration) }}</span>
+                                    <button @click="deleteCompanionRecord(record.id)" class="companion-history-delete" title="删除此陪伴记录">
+                                        <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="flex flex-wrap gap-1.5 mt-1">
+                                <span v-for="(card, idx) in record.replyCards" :key="idx" class="companion-reply-card text-[12px]">{{ card }}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div v-if="!companionHistory.length && !companionRunning && !companionReplyText" class="flex flex-col items-center justify-center py-10 opacity-30 text-muted">
+                        <i data-lucide="heart-handshake" class="w-8 h-8 mb-3 stroke-[1]"></i>
+                        <span class="text-xs font-light tracking-widest serif-text">尚无陪伴记录</span>
+                    </div>
+                </main>
+            </div>
+
+            <!-- 洞察视图 -->
+            <div v-else-if="currentView === 'insight'" key="insight" class="absolute inset-0 flex flex-col z-20 bg-bg">
+                <header class="h-14 flex items-center justify-between px-4 border-b border-border shrink-0 bg-surface">
+                    <button @click="switchView('home')" class="p-2 -ml-2 text-text"><i data-lucide="chevron-left" class="w-5 h-5 stroke-[1.5]"></i></button>
+                    <span class="text-[13px] font-medium tracking-widest serif-text">记忆洞察</span><div class="w-9"></div>
+                </header>
+                <main class="flex-1 overflow-y-auto p-6 space-y-8 font-light text-[13px]">
+                    <div class="grid grid-cols-2 gap-4 text-center">
+                        <div class="bg-surface p-4 rounded-xl border border-border"><div class="text-xs text-muted mb-1 tracking-widest">只言片语</div><div class="text-2xl font-serif text-text">{{ messages.length }}</div></div>
+                        <div class="bg-surface p-4 rounded-xl border border-border"><div class="text-xs text-muted mb-1 tracking-widest">初次相遇</div><div class="text-[11px] font-serif text-text mt-2">{{ statData.firstTime }}</div></div>
+                    </div>
+                    <div class="bg-surface p-5 rounded-xl border border-border space-y-4"><div class="text-[11px] tracking-widest text-muted uppercase">言语占比</div><div class="flex h-2 rounded-full overflow-hidden bg-bg"><div class="bg-text transition-all" :style="{ width: statData.myRatio + '%' }"></div><div class="bg-muted transition-all" :style="{ width: (100 - statData.myRatio) + '%' }"></div></div><div class="flex justify-between text-[10px] text-muted"><span>我: {{ statData.myRatio }}%</span><span>客: {{ 100 - statData.myRatio }}%</span></div></div>
+                    <div class="bg-surface p-5 rounded-xl border border-border"><div class="text-[11px] tracking-widest text-muted uppercase mb-4">思绪浮现</div><div class="flex flex-wrap gap-2"><span v-for="(word, i) in statData.hotWords" :key="i" class="px-2 py-1 bg-bg border border-border rounded text-[11px]" :class="i < 3 ? 'text-text font-medium' : 'text-muted'">{{ word.text }} ({{ word.count }})</span><span v-if="!statData.hotWords.length" class="text-xs text-muted/50">尚无成形之语</span></div></div>
+                </main>
+            </div>
+
+            <!-- 偏好设置 -->
+            <div v-else-if="currentView === 'settings'" key="settings" class="absolute inset-0 flex flex-col z-20 bg-bg">
+                <header class="h-14 flex items-center justify-between px-4 border-b border-border shrink-0 bg-surface">
+                    <button @click="switchView('home')" class="p-2 -ml-2 text-text"><i data-lucide="chevron-left" class="w-5 h-5 stroke-[1.5]"></i></button>
+                    <span class="text-[13px] font-medium tracking-widest serif-text">法则</span><div class="w-9"></div>
+                </header>
+                <main class="flex-1 overflow-y-auto p-4 space-y-6 pb-12">
+                    <section><h3 class="text-[11px] font-semibold text-muted tracking-widest px-2 mb-2">陈列馆</h3>
+                        <div class="bg-surface border border-border rounded-xl p-3 flex gap-3 overflow-x-auto snap-x"><label class="w-16 h-24 shrink-0 border border-dashed border-border rounded-md flex flex-col items-center justify-center gap-1 cursor-pointer hover:bg-bg"><i data-lucide="plus" class="w-4 h-4 text-muted"></i><span class="text-[9px] text-muted">添置</span><input type="file" accept="image/*" class="hidden" @change="uploadBgToLibrary"></label><div class="w-16 h-24 shrink-0 border rounded-md cursor-pointer flex items-center justify-center text-[10px] text-muted snap-center transition-all" :class="!settings.bgImage ? 'border-text bg-bg' : 'border-border bg-surface'" @click="setBg('')">无相</div><div v-for="(bg, idx) in settings.bgLibrary" :key="idx" class="w-16 h-24 shrink-0 rounded-md bg-cover bg-center cursor-pointer relative group snap-center" :style="{ backgroundImage: `url(${bg})` }" :class="settings.bgImage === bg ? 'ring-2 ring-text ring-offset-1' : ''" @click="setBg(bg)"><button @click.stop="removeBg(idx)" class="absolute -top-2 -right-2 w-5 h-5 bg-surface text-red-500 rounded-full shadow border border-border opacity-0 group-hover:opacity-100 flex items-center justify-center"><i data-lucide="x" class="w-3 h-3"></i></button></div></div></section>
+                    <section><h3 class="text-[11px] font-semibold text-muted tracking-widest px-2 mb-2">排版</h3><div class="bg-surface border border-border rounded-xl overflow-hidden text-[13px]"><div class="flex items-center justify-between p-3.5 border-b border-border"><span>墨色模式</span><button @click="toggleDarkMode" class="w-10 h-5 rounded-full relative transition-colors" :class="settings.darkMode ? 'bg-text' : 'bg-border'"><div class="absolute top-1 left-1 w-3 h-3 bg-surface rounded-full transition-transform" :class="settings.darkMode ? 'translate-x-5' : 'translate-x-0'"></div></button></div><div class="flex items-center justify-between p-3.5 border-b border-border"><span>形体</span><select v-model="settings.fontFamily" class="bg-bg border border-border rounded px-2 py-1 text-xs"><option value="sans">无衬线</option><option value="serif">衬线</option></select></div><div class="p-3.5 border-b border-border flex flex-col gap-3"><div class="flex justify-between"><span>字重尺寸</span><span>{{settings.fontSize}}px</span></div><input type="range" v-model.number="settings.fontSize" min="12" max="20" class="w-full accent-text"></div><div class="flex items-center justify-between p-3.5 border-b border-border"><span>显露头像</span><button @click="settings.showAvatar = !settings.showAvatar" class="w-10 h-5 rounded-full relative transition-colors" :class="settings.showAvatar ? 'bg-text' : 'bg-border'"><div class="absolute top-1 left-1 w-3 h-3 bg-surface rounded-full transition-transform" :class="settings.showAvatar ? 'translate-x-5' : 'translate-x-0'"></div></button></div><div class="p-3.5 flex flex-col gap-2"><span>气泡刺绣 (CSS)</span><textarea v-model="settings.customCSS" rows="2" class="w-full bg-bg border border-border rounded p-2 text-[10px] font-mono resize-none" placeholder=".custom-css-target { }"></textarea></div></div></section>
+                    <section><h3 class="text-[11px] font-semibold text-muted tracking-widest px-2 mb-2">交互</h3><div class="bg-surface border border-border rounded-xl overflow-hidden"><div class="flex items-center justify-between p-3.5 border-b border-border"><span>空灵回声</span><button @click="toggleSound" class="w-10 h-5 rounded-full relative transition-colors" :class="settings.soundEnabled ? 'bg-text' : 'bg-border'"><div class="absolute top-1 left-1 w-3 h-3 bg-surface rounded-full transition-transform" :class="settings.soundEnabled ? 'translate-x-5' : 'translate-x-0'"></div></button></div><div class="flex items-center justify-between p-3.5 border-b border-border"><span>徐徐道来</span><button @click="settings.typewriter = !settings.typewriter" class="w-10 h-5 rounded-full relative" :class="settings.typewriter ? 'bg-text' : 'bg-border'"><div class="absolute top-1 left-1 w-3 h-3 bg-surface rounded-full transition-transform" :class="settings.typewriter ? 'translate-x-5' : 'translate-x-0'"></div></button></div><div class="flex items-center justify-between p-3.5 border-b border-border"><span>语料随缘抛出</span><button @click="settings.autoReply = !settings.autoReply" class="w-10 h-5 rounded-full relative" :class="settings.autoReply ? 'bg-text' : 'bg-border'"><div class="absolute top-1 left-1 w-3 h-3 bg-surface rounded-full transition-transform" :class="settings.autoReply ? 'translate-x-5' : 'translate-x-0'"></div></button></div><div class="flex items-center justify-between p-3.5 border-b border-border"><span>静候主动搭话</span><button @click="settings.activeMessage = !settings.activeMessage" class="w-10 h-5 rounded-full relative" :class="settings.activeMessage ? 'bg-text' : 'bg-border'"><div class="absolute top-1 left-1 w-3 h-3 bg-surface rounded-full transition-transform" :class="settings.activeMessage ? 'translate-x-5' : 'translate-x-0'"></div></button></div><div v-if="settings.activeMessage" class="p-3.5 bg-bg/50 flex flex-col gap-2"><div class="flex justify-between text-[11px] text-muted"><span>忍耐间隙</span><span>{{settings.activeInterval}}s</span></div><input type="range" v-model.number="settings.activeInterval" min="10" max="300" class="w-full accent-text"></div>
+                    
+                    <!-- 回复时间区间设置 -->
+                    <div class="flex items-center justify-between p-3.5 border-b border-border">
+                        <span>回复时间区间</span>
+                        <div class="reply-delay-range">
+                            <input type="number" v-model.number="settings.replyDelayMin" min="1" max="60" step="1" placeholder="最小"> 
+                            <span>~</span>
+                            <input type="number" v-model.number="settings.replyDelayMax" min="1" max="60" step="1" placeholder="最大">
+                            <span>秒</span>
+                        </div>
+                    </div>
+                    <div class="p-3.5 bg-bg/50 text-[10px] text-muted/80 flex items-center gap-2">
+                        <i data-lucide="info" class="w-3 h-3"></i> 对方回复将在该区间内随机延迟。若最小大于最大，自动交换。
+                    </div>
+
+                    <!-- 随机1~3张字卡回复 -->
+                    <div class="flex items-center justify-between p-3.5 border-b border-border">
+                        <div class="flex flex-col">
+                            <span>随机多字卡回复</span>
+                            <span class="text-[10px] text-muted/70 mt-0.5">对方回复时随机发送 1~3 张字卡，间隔约 2 秒</span>
+                        </div>
+                        <button @click="settings.multiCardReply = !settings.multiCardReply" class="w-10 h-5 rounded-full relative transition-colors shrink-0" :class="settings.multiCardReply ? 'bg-text' : 'bg-border'">
+                            <div class="absolute top-1 left-1 w-3 h-3 bg-surface rounded-full transition-transform" :class="settings.multiCardReply ? 'translate-x-5' : 'translate-x-0'"></div>
+                        </button>
+                    </div>
+                    
+                    </div></section>
+                    <!-- 数据管理区域 -->
+                    <section><h3 class="text-[11px] font-semibold text-muted tracking-widest px-2 mb-2">数据管理</h3>
+                        <div class="space-y-2">
+                            <button @click="exportAllData" class="export-btn">
+                                <span class="flex items-center gap-2"><i data-lucide="download" class="w-4 h-4"></i> 导出所有数据</span>
+                                <i data-lucide="chevron-right" class="w-4 h-4 text-muted"></i>
+                            </button>
+                            <label class="import-btn cursor-pointer">
+                                <span class="flex items-center gap-2"><i data-lucide="upload" class="w-4 h-4"></i> 导入所有数据</span>
+                                <i data-lucide="chevron-right" class="w-4 h-4 text-muted"></i>
+                                <input type="file" accept=".json" class="hidden" @change="importAllData">
+                            </label>
+                            <button @click="confirmClearAllData" class="danger-btn red">
+                                <span class="flex items-center gap-2"><i data-lucide="trash-2" class="w-4 h-4"></i> 删除所有数据</span>
+                                <i data-lucide="alert-triangle" class="w-4 h-4 text-red-400"></i>
+                            </button>
+                        </div>
+                    </section>
+                    <div class="mt-4"><button @click="clearChat" class="w-full text-left p-4 bg-surface border border-border rounded-xl text-red-500 font-light tracking-wider hover:bg-red-500/5 transition-colors flex justify-between items-center">焚毁旧梦 <i data-lucide="flame" class="w-4 h-4"></i></button></div>
+                </main>
+            </div>
+        </transition>
+    </div>
+</div>
+
+<script>
+const { createApp, ref, reactive, computed, watch, nextTick, onMounted, onUnmounted } = Vue;
+const genId = () => Date.now().toString(36) + '-' + Math.random().toString(36).substr(2, 6);
+
+const STORAGE_KEY = 'liubai_v3_data';
+
+createApp({
+    setup() {
+        const showIntro = ref(true);
+        const currentView = ref('home');
+        const unreadCount = ref(0);
+        const messages = ref([]);
+        const inputText = ref('');
+        const isTyping = ref(false);
+        let activeTimer = null;
+        const profiles = reactive({ me: { name: '我', avatar: '' }, them: { name: '客', avatar: '' } });
+        
+        const settings = reactive({ 
+            darkMode: false, 
+            showAvatar: true, 
+            avatarRadius: 50, 
+            autoReply: true, 
+            activeMessage: false, 
+            activeInterval: 60, 
+            soundEnabled: true, 
+            typewriter: true, 
+            bgImage: '', 
+            bgLibrary: [], 
+            fontFamily: 'serif', 
+            fontSize: 14, 
+            customCSS: '',
+            replyDelayMin: 3,
+            replyDelayMax: 7,
+            multiCardReply: false   // 随机1~3张字卡回复
+        });
+        
+        const replyGroups = ref([{ id: genId(), name: '初相识', replies: [{ id: genId(), text: '……', enabled: true }] }]);
+        const libSearchQuery = ref('');
+        const selectedRepliesArr = ref([]);
+        const chatState = reactive({ isSearching: false, keyword: '', results: [], currentIdx: 0 });
+        let saveTimer = null;
+        let audioCtx = null;
+        let groupSortable = null;
+        let replySortables = [];
+
+        // === 日记状态 ===
+        const diaries = ref([]);
+        const newDiaryText = ref('');
+        let diaryCheckInterval = null;
+
+        // === 问卷状态 ===
+        const surveys = ref([]);
+        const newSurvey = reactive({ title: '', questions: [] });
+        let surveyCheckInterval = null;
+
+        // === 朋友圈状态 ===
+        const moments = ref([]);
+        const newMomentText = ref('');
+        const newMomentImages = ref([]);
+        let momentCheckInterval = null;
+
+        // === 陪伴状态 ===
+        const companionRunning = ref(false);
+        const companionStartTime = ref(null);
+        const companionElapsed = ref(0);
+        let companionTickInterval = null;
+        const companionReplyText = ref('');
+        const companionReplyCards = ref([]);
+        let companionReplyTimeout = null;
+        const companionHistory = ref([]);
+
+        // === 字卡批量导入专用状态 ===
+        const showBatchImport = ref(false);
+        const batchImportText = ref('');
+        const batchImportGroupId = ref(replyGroups.value[0]?.id || '');
+
+        // 记录当前等待中的字卡超时，便于清理
+        let pendingCardTimers = [];
+
+        watch(replyGroups, (newGroups) => {
+            if (!newGroups.find(g => g.id === batchImportGroupId.value)) {
+                batchImportGroupId.value = newGroups[0]?.id || '';
+            }
+        }, { deep: true });
+
+        const batchLineCount = computed(() => {
+            return batchImportText.value.split('\n').filter(line => line.trim() !== '').length;
+        });
+
+        const toggleBatchImport = () => {
+            showBatchImport.value = !showBatchImport.value;
+            if (showBatchImport.value && replyGroups.value.length) {
+                if (!replyGroups.value.find(g => g.id === batchImportGroupId.value)) {
+                    batchImportGroupId.value = replyGroups.value[0]?.id || '';
+                }
+            }
+            nextTick(() => { if (window.lucide) lucide.createIcons(); });
+        };
+
+        const clearBatchImport = () => { batchImportText.value = ''; };
+
+        const importBatchLines = () => {
+            const lines = batchImportText.value.split('\n').map(l => l.trim()).filter(l => l !== '');
+            if (!lines.length) return;
+            const targetGroup = replyGroups.value.find(g => g.id === batchImportGroupId.value);
+            if (!targetGroup) {
+                alert('请先选择一个卷宗');
+                return;
+            }
+            lines.forEach(text => {
+                targetGroup.replies.push({
+                    id: genId(),
+                    text: text,
+                    enabled: true
+                });
+            });
+            batchImportText.value = '';
+            debouncedSave();
+            nextTick(() => { initSortable(); if (window.lucide) lucide.createIcons(); });
+        };
+
+        const saveData = async () => {
+            const data = {
+                messages: messages.value,
+                profiles: JSON.parse(JSON.stringify(profiles)),
+                settings: JSON.parse(JSON.stringify(settings)),
+                replyGroups: replyGroups.value,
+                diaries: diaries.value,
+                surveys: surveys.value,
+                moments: moments.value,
+                companionHistory: companionHistory.value
+            };
+            try {
+                await localforage.setItem(STORAGE_KEY, data);
+                const lightweight = {
+                    ...data,
+                    settings: { ...data.settings, bgImage: data.settings.bgImage ? '[图片]' : '', bgLibrary: data.settings.bgLibrary.map(() => '[图片]') },
+                    profiles: { me: { ...data.profiles.me, avatar: data.profiles.me.avatar ? '[图片]' : '' }, them: { ...data.profiles.them, avatar: data.profiles.them.avatar ? '[图片]' : '' } },
+                    moments: data.moments.map(m => ({ ...m, images: m.images.map(() => '[图片]') })),
+                    messages: data.messages
+                };
+                localStorage.setItem(STORAGE_KEY + '_backup', JSON.stringify(lightweight));
+            } catch (e) {
+                console.warn('localforage 保存失败，尝试 localStorage', e);
+                try {
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+                } catch (e2) {
+                    console.error('所有存储方式均失败，数据可能过大', e2);
+                }
+            }
+        };
+
+        const debouncedSave = () => {
+            if (saveTimer) clearTimeout(saveTimer);
+            saveTimer = setTimeout(saveData, 300);
+        };
+
+        watch([messages, profiles, settings, replyGroups, diaries, surveys, moments, companionHistory], debouncedSave, { deep: true });
+
+        const saveDraft = () => localStorage.setItem('liubai_draft', inputText.value);
+        const applyCSS = () => { document.getElementById('custom-css-injection').innerHTML = settings.customCSS; };
+        watch(() => settings.customCSS, applyCSS);
+        const toggleDarkMode = () => { settings.darkMode = !settings.darkMode; document.documentElement.classList.toggle('dark', settings.darkMode); };
+        const toggleSound = () => { settings.soundEnabled = !settings.soundEnabled; if(settings.soundEnabled && !audioCtx) { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } };
+        const playTone = (type) => { if(!settings.soundEnabled || !audioCtx) return; try { const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain(); osc.connect(gain); gain.connect(audioCtx.destination); if(type==='send'){ osc.type='sine'; osc.frequency.value=520; osc.frequency.exponentialRampToValueAtTime(280, audioCtx.currentTime+0.08); gain.gain.setValueAtTime(0.3, audioCtx.currentTime); gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime+0.12); osc.start(); osc.stop(audioCtx.currentTime+0.12); } else if(type==='companionEnd'){ osc.type='sine'; osc.frequency.value=440; gain.gain.setValueAtTime(0.15, audioCtx.currentTime); gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime+0.3); osc.start(); osc.stop(audioCtx.currentTime+0.3); } else { osc.type='sine'; osc.frequency.value=320; osc.frequency.exponentialRampToValueAtTime(580, audioCtx.currentTime+0.12); gain.gain.setValueAtTime(0.2, audioCtx.currentTime); gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime+0.14); osc.start(); osc.stop(audioCtx.currentTime+0.14); } } catch(e){} };
+        
+        const sendMessage = async (sender, contentRaw, quoteText) => { 
+            if(!contentRaw) return; 
+            const content = contentRaw.trim(); 
+            const newMsg = { 
+                id: genId(), 
+                sender, 
+                content: '', 
+                timestamp: Date.now(), 
+                status: sender==='me'?'sent':'read', 
+                isReadFlag: currentView.value==='chat', 
+                isTyping: false,
+                quote: quoteText || null
+            }; 
+            messages.value.push(newMsg); 
+            playTone(sender); 
+            scrollToBottom(); 
+            manageActiveTimer(); 
+            updateUnread(); 
+            if(sender === 'them' && settings.typewriter && currentView.value==='chat'){ 
+                newMsg.isTyping=true; 
+                for(let i=0;i<content.length;i++){ 
+                    newMsg.content+=content[i]; 
+                    await new Promise(r=>setTimeout(r, 38)); 
+                    scrollToBottom(); 
+                } 
+                newMsg.isTyping=false; 
+            } else { 
+                newMsg.content=content; 
+            } 
+        };
+
+        // 发送一张字卡（单条消息）
+        const sendOneCard = (sender, cardText, quoteText) => {
+            if (!cardText) return;
+            const newMsg = {
+                id: genId(),
+                sender,
+                content: cardText,
+                timestamp: Date.now(),
+                status: sender === 'me' ? 'sent' : 'read',
+                isReadFlag: currentView.value === 'chat',
+                isTyping: false,
+                quote: quoteText || null
+            };
+            messages.value.push(newMsg);
+            playTone(sender);
+            scrollToBottom();
+            manageActiveTimer();
+            updateUnread();
+        };
+
+        // ⭐ 修改：发送多张字卡，每张间隔约2秒
+        const sendCardGroupSequentially = (sender, cards, quoteText) => {
+            if (!cards || !cards.length) return;
+            // 清理上一轮可能未完成的计时器
+            pendingCardTimers.forEach(t => clearTimeout(t));
+            pendingCardTimers = [];
+            // 第一张立即发送，后续每隔约 2 秒发送一张
+            sendOneCard(sender, cards[0], quoteText);
+            for (let i = 1; i < cards.length; i++) {
+                const timer = setTimeout(() => {
+                    sendOneCard(sender, cards[i], null); // 引用只加在第一张
+                }, i * 2000); // 2000ms 间隔
+                pendingCardTimers.push(timer);
+            }
+        };
+
+        const getRandomReplyDelay = () => {
+            let min = settings.replyDelayMin || 3;
+            let max = settings.replyDelayMax || 7;
+            if (min > max) [min, max] = [max, min];
+            const minMs = min * 1000;
+            const maxMs = max * 1000;
+            return Math.floor(Math.random() * (maxMs - minMs + 1)) + minMs;
+        };
+
+        // ⭐ 修改 triggerReply：支持多字卡依次间隔2秒送达
+        const triggerReply = (delay) => { 
+            if(isTyping.value) return; 
+            isTyping.value=true; 
+            const actualDelay = delay !== undefined ? delay : getRandomReplyDelay();
+            setTimeout(()=>{ 
+                isTyping.value=false; 
+                let pool=[]; 
+                replyGroups.value.forEach(g=>g.replies.forEach(r=>{ if(r.enabled && r.text.trim()) pool.push(r.text.trim()); })); 
+                let quoteText = null;
+                if (Math.random() < 0.11) {
+                    const myMessages = messages.value.filter(m => m.sender === 'me' && m.content.trim());
+                    if (myMessages.length > 0) {
+                        const recent = myMessages.slice(-15);
+                        const pick = recent[Math.floor(Math.random() * recent.length)];
+                        quoteText = pick.content.trim();
+                    }
+                }
+                // 若开启多字卡回复且语料库有可用内容
+                if (settings.multiCardReply && pool.length > 0) {
+                    const count = Math.floor(Math.random() * 3) + 1; // 1~3 张
+                    const shuffled = [...pool].sort(() => Math.random() - 0.5);
+                    const selected = shuffled.slice(0, Math.min(count, pool.length));
+                    sendCardGroupSequentially('them', selected, quoteText);
+                } else {
+                    // 单条文本回复（原有逻辑）
+                    let replyText = ''; 
+                    if(pool.length) replyText = pool[Math.floor(Math.random()*pool.length)]; 
+                    else replyText = '……'; 
+                    sendMessage('them', replyText, quoteText); 
+                }
+            }, actualDelay); 
+        };
+        
+        const handleSend = () => { 
+            const txt = inputText.value.trim(); 
+            if(!txt) return; 
+            sendMessage('me', txt); 
+            inputText.value=''; 
+            saveDraft(); 
+            if(settings.autoReply) {
+                triggerReply(); 
+            }
+        };
+        
+        const forceReply = () => { if(!isTyping.value) triggerReply(300); };
+        const manageActiveTimer = () => { if(activeTimer) clearInterval(activeTimer); if(settings.activeMessage) activeTimer = setInterval(()=> triggerReply(), settings.activeInterval*1000); };
+        const scrollToBottom = () => nextTick(()=>{ const el=document.getElementById('chat-container'); if(el) el.scrollTop=el.scrollHeight; });
+        const updateUnread = () => { if(currentView.value==='chat'){ unreadCount.value=0; messages.value.forEach(m=>{ if(m.sender==='me') m.status='read'; }); } else { unreadCount.value = messages.value.filter(m=>m.sender==='them' && !m.isReadFlag).length; } };
+        
+        const toggleSearch = () => { chatState.isSearching=!chatState.isSearching; if(!chatState.isSearching) chatState.keyword='', chatState.results=[]; };
+        const executeSearch = () => { const k=chatState.keyword.trim(); if(!k){ chatState.results=[]; return; } chatState.results=messages.value.filter(m=>m.content.includes(k)).map(m=>m.id); if(chatState.results.length){ chatState.currentIdx=0; jumpToMsg(); } };
+        const jumpSearch = (dir)=>{ chatState.currentIdx=(chatState.currentIdx+dir+chatState.results.length)%chatState.results.length; jumpToMsg(); };
+        const jumpToMsg=()=>{ const id=chatState.results[chatState.currentIdx]; const el=document.getElementById('msg-'+id); if(el) el.scrollIntoView({behavior:'smooth',block:'center'}); };
+        const highlightText=(text,typing)=>{ let out=text; if(chatState.keyword && chatState.results.length){ const reg=new RegExp(`(${chatState.keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`,'gi'); out=text.replace(reg,'<span class="highlight">$1</span>'); } if(typing) out+='<span class="animate-pulse opacity-50">|</span>'; return out; };
+        
+        const captureScreenshot = () => { const el=document.getElementById('capture-area'); if(!el) return; html2canvas(el, { backgroundColor: settings.darkMode?'#0d0d0f':'#f7f7f9', scale:2 }).then(canvas=>{ const a=document.createElement('a'); a.href=canvas.toDataURL(); a.download=`留白_${Date.now()}.png`; a.click(); }); };
+        
+        const initSortable = () => { if(groupSortable) groupSortable.destroy(); replySortables.forEach(s=>s.destroy()); replySortables=[]; const container=document.getElementById('library-groups'); if(!container) return; groupSortable=new Sortable(container, { animation:180, handle:'.drag-handle-group', onEnd:()=>{ const groups=[]; document.querySelectorAll('.group-item').forEach(gEl=>{ const gId=gEl.dataset.id; const foundGroup=replyGroups.value.find(g=>g.id===gId); if(foundGroup){ const repliesOrder=[]; gEl.querySelectorAll('.reply-item').forEach(rEl=>{ const rid=rEl.dataset.id; const rep=foundGroup.replies.find(r=>r.id===rid); if(rep) repliesOrder.push(rep); }); groups.push({...foundGroup, replies:repliesOrder}); } }); if(groups.length) replyGroups.value=groups; debouncedSave(); } }); document.querySelectorAll('.reply-list').forEach(listEl=>{ replySortables.push(new Sortable(listEl, { group:{ name:'sharedReplies', pull:true, revertClone:false }, animation:180, handle:'.drag-handle-reply', onEnd:(evt)=>{ const targetGroupId=evt.to.closest('.group-item')?.dataset.id; const sourceGroupId=evt.from.closest('.group-item')?.dataset.id; if(targetGroupId && sourceGroupId && targetGroupId!==sourceGroupId){ const sourceGroup=replyGroups.value.find(g=>g.id===sourceGroupId); const targetGroup=replyGroups.value.find(g=>g.id===targetGroupId); const movedId=evt.item.dataset.id; const movedReply=sourceGroup?.replies.find(r=>r.id===movedId); if(movedReply && targetGroup){ sourceGroup.replies=sourceGroup.replies.filter(r=>r.id!==movedId); targetGroup.replies.push(movedReply); debouncedSave(); nextTick(initSortable); } } else { const newGroups=[]; document.querySelectorAll('.group-item').forEach(gEl=>{ const gid=gEl.dataset.id; const g=replyGroups.value.find(gr=>gr.id===gid); if(g){ const newReplies=[]; gEl.querySelectorAll('.reply-item').forEach(rEl=>{ const rep=g.replies.find(r=>r.id===rEl.dataset.id); if(rep) newReplies.push(rep); }); newGroups.push({...g, replies:newReplies}); } }); if(newGroups.length) replyGroups.value=newGroups; debouncedSave(); } } })); }); };
+        
+        const addGroup = () => { replyGroups.value.push({ id: genId(), name: '新卷宗', replies: [] }); nextTick(initSortable); };
+        const deleteGroup = (id) => { if(confirm('确定焚毁卷宗？')){ replyGroups.value=replyGroups.value.filter(g=>g.id!==id); debouncedSave(); nextTick(initSortable); } };
+        const addReplyToGroup = (gid) => { const g=replyGroups.value.find(x=>x.id===gid); if(g){ g.replies.push({ id: genId(), text: '', enabled: true }); debouncedSave(); nextTick(initSortable); } };
+        const toggleReplyEnable = (reply) => { reply.enabled = !reply.enabled; debouncedSave(); };
+        const batchDelete = () => { if(!selectedRepliesArr.value.length) return; if(confirm(`删除 ${selectedRepliesArr.value.length} 条语料`)){ replyGroups.value.forEach(g=>{ g.replies=g.replies.filter(r=>!selectedRepliesArr.value.includes(r.id)); }); selectedRepliesArr.value=[]; debouncedSave(); nextTick(initSortable); } };
+        const batchToggle = () => { replyGroups.value.forEach(g=>g.replies.forEach(r=>{ if(selectedRepliesArr.value.includes(r.id)) r.enabled=!r.enabled; })); selectedRepliesArr.value=[]; debouncedSave(); };
+        const exportLibrary = () => { const data=JSON.parse(JSON.stringify(replyGroups.value)); const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`留白语料_${Date.now()}.json`; a.click(); };
+        const importLibrary=(e)=>{ const file=e.target.files[0]; if(!file) return; const reader=new FileReader(); reader.onload=ev=>{ try{ const data=JSON.parse(ev.target.result); if(Array.isArray(data)){ if(confirm('覆盖现有卷宗？(取消则合并)')) replyGroups.value=data; else replyGroups.value.push(...data); debouncedSave(); nextTick(initSortable); } } catch(err){ alert('文件格式错误'); } }; reader.readAsText(file); };
+        
+        const switchView = (v) => { currentView.value=v; if(v==='chat'){ messages.value.forEach(m=>m.isReadFlag=true); updateUnread(); scrollToBottom(); } else if(v==='library') { nextTick(initSortable); if(replyGroups.value.length) batchImportGroupId.value = replyGroups.value[0].id; } else if(v==='diary') { checkAllDiaries(); } else if(v==='survey') { checkAllSurveys(); } else if(v==='moments') { checkAllMoments(); } nextTick(()=>{ if(window.lucide) lucide.createIcons(); }); };
+        const formatTime=(ts)=>{ const d=new Date(ts); const now=new Date(); if(d.toDateString()===now.toDateString()) return `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`; return `${d.getMonth()+1}/${d.getDate()}`; };
+        const shouldShowAvatar=(idx)=> idx===0 || messages.value[idx].sender!==messages.value[idx-1].sender || (messages.value[idx].timestamp-messages.value[idx-1].timestamp>120000);
+        const deleteMsg=(id)=>{ messages.value=messages.value.filter(m=>m.id!==id); };
+        const editName=(role)=>{ const n=prompt(`为${profiles[role].name}赋予新名`,profiles[role].name); if(n&&n.trim()) profiles[role].name=n.trim().slice(0,10); };
+        const editAvatar=(role)=>{ if(!confirm('设定新像？取消则移除')){ profiles[role].avatar=''; return; } const input=document.createElement('input'); input.type='file'; input.accept='image/*'; input.onchange=e=>{ const file=e.target.files[0]; if(file){ const fr=new FileReader(); fr.onload=ev=>profiles[role].avatar=ev.target.result; fr.readAsDataURL(file); } }; input.click(); };
+        const uploadBgToLibrary=(e)=>{ const f=e.target.files[0]; if(f){ const fr=new FileReader(); fr.onload=ev=>{ settings.bgLibrary.push(ev.target.result); settings.bgImage=ev.target.result; }; fr.readAsDataURL(f); } };
+        const setBg=(bg)=>settings.bgImage=bg; const removeBg=(idx)=>{ if(settings.bgImage===settings.bgLibrary[idx]) settings.bgImage=''; settings.bgLibrary.splice(idx,1); };
+        const appBgStyle=computed(()=>settings.bgImage?{ backgroundImage:`url(${settings.bgImage})`, backgroundSize:'cover', backgroundPosition:'center' }:{});
+        const clearChat=()=>{ if(confirm('焚毁所有对话记忆？')){ messages.value=[]; switchView('home'); } };
+        const filteredGroups = computed(()=>{ const q=libSearchQuery.value.trim().toLowerCase(); if(!q) return replyGroups.value; return replyGroups.value.map(g=>({ ...g, replies:g.replies.filter(r=>r.text.toLowerCase().includes(q)) })).filter(g=>g.replies.length||g.name.toLowerCase().includes(q)); });
+        const statData = computed(()=>{ const total=messages.value.length; if(!total) return { myRatio:50, firstTime:'尚未涉足', hotWords:[] }; const myCount=messages.value.filter(m=>m.sender==='me').length; const first=messages.value[0]?.timestamp?new Date(messages.value[0].timestamp).toLocaleDateString():'—'; const allText=messages.value.map(m=>m.content).join(''); const words=allText.match(/[\u4e00-\u9fa5]{2,4}/g)||[]; const freq={}; words.forEach(w=>freq[w]=(freq[w]||0)+1); const hot=Object.entries(freq).map(([k,v])=>({text:k,count:v})).sort((a,b)=>b.count-a.count).slice(0,8); return { myRatio:Math.round(myCount/total*100), firstTime:first, hotWords:hot }; });
+
+        // ===== 数据管理功能 =====
+        const exportAllData = () => {
+            const data = {
+                exportTime: new Date().toISOString(),
+                version: '3.0',
+                messages: messages.value,
+                profiles: JSON.parse(JSON.stringify(profiles)),
+                settings: JSON.parse(JSON.stringify(settings)),
+                replyGroups: replyGroups.value,
+                diaries: diaries.value,
+                surveys: surveys.value,
+                moments: moments.value,
+                companionHistory: companionHistory.value
+            };
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `留白全量数据_${new Date().toISOString().slice(0,19).replace(/:/g, '-')}.json`;
+            a.click();
+            URL.revokeObjectURL(a.href);
+        };
+
+        const importAllData = (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                try {
+                    const data = JSON.parse(ev.target.result);
+                    if (!data || typeof data !== 'object') {
+                        alert('文件格式错误：不是有效的JSON对象。');
+                        return;
+                    }
+                    if (!confirm('导入将覆盖当前所有数据，确定继续？')) return;
+                    if (data.messages) messages.value = data.messages;
+                    if (data.profiles) {
+                        if (data.profiles.me) Object.assign(profiles.me, data.profiles.me);
+                        if (data.profiles.them) Object.assign(profiles.them, data.profiles.them);
+                    }
+                    if (data.settings) Object.assign(settings, data.settings);
+                    if (data.replyGroups) {
+                        replyGroups.value = data.replyGroups;
+                        batchImportGroupId.value = data.replyGroups[0]?.id || '';
+                    }
+                    if (data.diaries) diaries.value = data.diaries;
+                    if (data.surveys) surveys.value = data.surveys;
+                    if (data.moments) moments.value = data.moments;
+                    if (data.companionHistory) companionHistory.value = data.companionHistory;
+                    document.documentElement.classList.toggle('dark', settings.darkMode);
+                    applyCSS();
+                    updateUnread();
+                    debouncedSave();
+                    nextTick(() => { if (window.lucide) lucide.createIcons(); });
+                    alert('数据导入成功。');
+                } catch (err) {
+                    alert('导入失败：文件格式错误或内容损坏。');
+                }
+            };
+            reader.readAsText(file);
+            e.target.value = '';
+        };
+
+        const confirmClearAllData = async () => {
+            if (!confirm('确定删除所有数据？此操作不可恢复，将清空交谈、语料、日记、问卷、朋友圈、陪伴记录以及所有偏好设置。')) return;
+            if (!confirm('再次确认：所有数据将永久焚毁。确定继续？')) return;
+            try {
+                await localforage.removeItem(STORAGE_KEY);
+                localStorage.removeItem(STORAGE_KEY);
+                localStorage.removeItem(STORAGE_KEY + '_backup');
+                localStorage.removeItem('liubai_draft');
+                messages.value = [];
+                profiles.me = { name: '我', avatar: '' };
+                profiles.them = { name: '客', avatar: '' };
+                Object.assign(settings, { 
+                    darkMode: false, 
+                    showAvatar: true, 
+                    avatarRadius: 50, 
+                    autoReply: true, 
+                    activeMessage: false, 
+                    activeInterval: 60, 
+                    soundEnabled: true, 
+                    typewriter: true, 
+                    bgImage: '', 
+                    bgLibrary: [], 
+                    fontFamily: 'serif', 
+                    fontSize: 14, 
+                    customCSS: '',
+                    replyDelayMin: 3,
+                    replyDelayMax: 7,
+                    multiCardReply: false
+                });
+                replyGroups.value = [{ id: genId(), name: '初相识', replies: [{ id: genId(), text: '……', enabled: true }] }];
+                diaries.value = [];
+                surveys.value = [];
+                moments.value = [];
+                companionHistory.value = [];
+                inputText.value = '';
+                newDiaryText.value = '';
+                newMomentText.value = '';
+                newMomentImages.value = [];
+                newSurvey.title = '';
+                newSurvey.questions = [];
+                companionReplyText.value = '';
+                companionReplyCards.value = [];
+                showBatchImport.value = false;
+                batchImportText.value = '';
+                // 清理字卡延时
+                pendingCardTimers.forEach(t => clearTimeout(t));
+                pendingCardTimers = [];
+                document.documentElement.classList.remove('dark');
+                applyCSS();
+                updateUnread();
+                switchView('home');
+                nextTick(() => { if (window.lucide) lucide.createIcons(); });
+                alert('所有数据已焚毁。');
+            } catch (e) {
+                alert('删除数据时出错，请刷新页面重试。');
+            }
+        };
+
+        // ===== 日记功能 =====
+        const addDiary = () => {
+            const text = newDiaryText.value.trim();
+            if (!text) return;
+            const diary = {
+                id: genId(),
+                text: text,
+                timestamp: Date.now(),
+                reply: null,
+                replyDelay: Math.floor(Math.random() * (24 * 60 * 60 * 1000 - 60 * 60 * 1000 + 1)) + 60 * 60 * 1000
+            };
+            diaries.value.unshift(diary);
+            newDiaryText.value = '';
+            debouncedSave();
+            if(settings.soundEnabled && audioCtx) {
+                try {
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.connect(gain); gain.connect(audioCtx.destination);
+                    osc.type = 'sine'; osc.frequency.value = 400;
+                    gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.15);
+                    osc.start(); osc.stop(audioCtx.currentTime + 0.15);
+                } catch(e){}
+            }
+        };
+
+        const getRemainingTime = (diary) => {
+            if (diary.reply) return '已回复';
+            const elapsed = Date.now() - diary.timestamp;
+            const remaining = Math.max(0, diary.replyDelay - elapsed);
+            if (remaining <= 0) return '即将回音';
+            const hours = Math.floor(remaining / (1000 * 60 * 60));
+            const minutes = Math.floor((remaining % (1000 * 60 * 60)) / (1000 * 60));
+            if (hours > 0) return `${hours}时${minutes}分`;
+            return `${minutes}分`;
+        };
+
+        const formatDiaryTime = (ts) => {
+            const d = new Date(ts);
+            return `${d.getFullYear()}.${(d.getMonth()+1).toString().padStart(2,'0')}.${d.getDate().toString().padStart(2,'0')} ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
+        };
+
+        const deleteDiary = (id) => {
+            if (!confirm('焚毁这篇日记？')) return;
+            diaries.value = diaries.value.filter(d => d.id !== id);
+            debouncedSave();
+        };
+
+        const checkDiariesForReply = () => {
+            let changed = false;
+            const now = Date.now();
+            diaries.value.forEach(diary => {
+                if (!diary.reply && (now - diary.timestamp) >= diary.replyDelay) {
+                    let pool = [];
+                    replyGroups.value.forEach(g => g.replies.forEach(r => {
+                        if (r.enabled && r.text.trim()) pool.push(r.text.trim());
+                    }));
+                    const replyText = pool.length ? pool[Math.floor(Math.random() * pool.length)] : '……';
+                    diary.reply = replyText;
+                    changed = true;
+                }
+            });
+            if (changed) {
+                debouncedSave();
+                diaries.value = [...diaries.value];
+            }
+        };
+
+        const checkAllDiaries = () => {
+            checkDiariesForReply();
+            if (diaryCheckInterval) clearInterval(diaryCheckInterval);
+            diaryCheckInterval = setInterval(() => {
+                checkDiariesForReply();
+                diaries.value = [...diaries.value];
+            }, 30000);
+        };
+
+        // ===== 问卷功能 =====
+        const addQuestion = () => {
+            newSurvey.questions.push({ text: '', type: 'single', options: ['', ''] });
+        };
+
+        const removeQuestion = (qi) => {
+            newSurvey.questions.splice(qi, 1);
+        };
+
+        const addOption = (qi) => {
+            newSurvey.questions[qi].options.push('');
+        };
+
+        const removeOption = (qi, oi) => {
+            if (newSurvey.questions[qi].options.length <= 2) return;
+            newSurvey.questions[qi].options.splice(oi, 1);
+        };
+
+        const canSendSurvey = computed(() => {
+            if (!newSurvey.title.trim()) return false;
+            if (!newSurvey.questions.length) return false;
+            for (let q of newSurvey.questions) {
+                if (!q.text.trim()) return false;
+                if (q.options.length < 2) return false;
+                if (q.options.some(o => !o.trim())) return false;
+            }
+            return true;
+        });
+
+        const sendSurvey = () => {
+            if (!canSendSurvey.value) return;
+            const survey = {
+                id: genId(),
+                title: newSurvey.title.trim(),
+                questions: JSON.parse(JSON.stringify(newSurvey.questions)),
+                timestamp: Date.now(),
+                reply: null,
+                replyDelay: Math.floor(Math.random() * (24 * 60 * 60 * 1000 - 60 * 60 * 1000 + 1)) + 60 * 60 * 1000
+            };
+            surveys.value.unshift(survey);
+            newSurvey.title = '';
+            newSurvey.questions = [];
+            debouncedSave();
+            if (settings.soundEnabled && audioCtx) {
+                try {
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.connect(gain); gain.connect(audioCtx.destination);
+                    osc.type = 'sine'; osc.frequency.value = 600;
+                    gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.15);
+                    osc.start(); osc.stop(audioCtx.currentTime + 0.15);
+                } catch(e){}
+            }
+        };
+
+        const deleteSurvey = (id) => {
+            if (!confirm('焚毁这份问卷？')) return;
+            surveys.value = surveys.value.filter(s => s.id !== id);
+            debouncedSave();
+        };
+
+        const getSurveyRemainingTime = (survey) => {
+            if (survey.reply) return '已回复';
+            const elapsed = Date.now() - survey.timestamp;
+            const remaining = Math.max(0, survey.replyDelay - elapsed);
+            if (remaining <= 0) return '即将回音';
+            const hours = Math.floor(remaining / (1000 * 60 * 60));
+            const minutes = Math.floor((remaining % (1000 * 60 * 60)) / (1000 * 60));
+            if (hours > 0) return `${hours}时${minutes}分`;
+            return `${minutes}分`;
+        };
+
+        const checkSurveysForReply = () => {
+            let changed = false;
+            const now = Date.now();
+            surveys.value.forEach(survey => {
+                if (!survey.reply && (now - survey.timestamp) >= survey.replyDelay) {
+                    const answers = survey.questions.map(q => {
+                        if (q.type === 'single') {
+                            return q.options[Math.floor(Math.random() * q.options.length)];
+                        } else {
+                            const count = Math.floor(Math.random() * q.options.length) + 1;
+                            const shuffled = [...q.options].sort(() => Math.random() - 0.5);
+                            return shuffled.slice(0, count);
+                        }
+                    });
+                    survey.reply = answers;
+                    changed = true;
+                }
+            });
+            if (changed) {
+                debouncedSave();
+                surveys.value = [...surveys.value];
+            }
+        };
+
+        const checkAllSurveys = () => {
+            checkSurveysForReply();
+            if (surveyCheckInterval) clearInterval(surveyCheckInterval);
+            surveyCheckInterval = setInterval(() => {
+                checkSurveysForReply();
+                surveys.value = [...surveys.value];
+            }, 30000);
+        };
+
+        // ===== 朋友圈功能 =====
+        const canPublishMoment = computed(() => {
+            return newMomentText.value.trim() !== '' || newMomentImages.value.length > 0;
+        });
+
+        const handleMomentImageUpload = (e) => {
+            const files = e.target.files;
+            if (!files) return;
+            for (let i = 0; i < files.length && newMomentImages.value.length < 9; i++) {
+                const file = files[i];
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                    newMomentImages.value.push(ev.target.result);
+                };
+                reader.readAsDataURL(file);
+            }
+            e.target.value = '';
+        };
+
+        const removeMomentImage = (idx) => {
+            newMomentImages.value.splice(idx, 1);
+        };
+
+        const publishMoment = () => {
+            if (!canPublishMoment.value) return;
+            const moment = {
+                id: genId(),
+                text: newMomentText.value.trim(),
+                images: [...newMomentImages.value],
+                timestamp: Date.now(),
+                comment: null,
+                noComment: false,
+                replyDelay: Math.floor(Math.random() * (16000 - 10000 + 1)) + 10000,
+                willIgnore: Math.random() < 0.10
+            };
+            moments.value.unshift(moment);
+            newMomentText.value = '';
+            newMomentImages.value = [];
+            debouncedSave();
+            if (settings.soundEnabled && audioCtx) {
+                try {
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.connect(gain); gain.connect(audioCtx.destination);
+                    osc.type = 'sine'; osc.frequency.value = 500;
+                    gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.12);
+                    osc.start(); osc.stop(audioCtx.currentTime + 0.12);
+                } catch(e){}
+            }
+        };
+
+        const deleteMoment = (id) => {
+            if (!confirm('焚毁这条动态？')) return;
+            moments.value = moments.value.filter(m => m.id !== id);
+            debouncedSave();
+        };
+
+        const getMomentRemainingTime = (moment) => {
+            if (moment.comment) return '已回复';
+            if (moment.noComment) return '已读不回';
+            const elapsed = Date.now() - moment.timestamp;
+            const remaining = Math.max(0, moment.replyDelay - elapsed);
+            if (remaining <= 0) return '即将回音';
+            const seconds = Math.ceil(remaining / 1000);
+            return `${seconds}秒`;
+        };
+
+        const checkMomentsForReply = () => {
+            let changed = false;
+            const now = Date.now();
+            moments.value.forEach(moment => {
+                if (moment.comment || moment.noComment) return;
+                if (now - moment.timestamp >= moment.replyDelay) {
+                    if (moment.willIgnore) {
+                        moment.noComment = true;
+                    } else {
+                        let pool = [];
+                        replyGroups.value.forEach(g => g.replies.forEach(r => {
+                            if (r.enabled && r.text.trim()) pool.push(r.text.trim());
+                        }));
+                        if (pool.length === 0) {
+                            moment.comment = '……';
+                        } else {
+                            const count = Math.floor(Math.random() * 3) + 1;
+                            const shuffled = [...pool].sort(() => Math.random() - 0.5);
+                            const selected = shuffled.slice(0, count);
+                            moment.comment = selected.join(' ');
+                        }
+                    }
+                    changed = true;
+                }
+            });
+            if (changed) {
+                debouncedSave();
+                moments.value = [...moments.value];
+            }
+        };
+
+        const checkAllMoments = () => {
+            checkMomentsForReply();
+            if (momentCheckInterval) clearInterval(momentCheckInterval);
+            momentCheckInterval = setInterval(() => {
+                checkMomentsForReply();
+                moments.value = [...moments.value];
+            }, 1000);
+        };
+
+        // ===== 陪伴功能 =====
+        const formatCompanionTime = (seconds) => {
+            const m = Math.floor(seconds / 60);
+            const s = seconds % 60;
+            return `${m.toString().padStart(2, '0')} : ${s.toString().padStart(2, '0')}`;
+        };
+
+        const startCompanion = () => {
+            if (companionRunning.value) return;
+            companionRunning.value = true;
+            companionStartTime.value = Date.now();
+            companionElapsed.value = 0;
+            companionReplyText.value = '';
+            companionReplyCards.value = [];
+            if (companionReplyTimeout) { clearTimeout(companionReplyTimeout); companionReplyTimeout = null; }
+            if (companionTickInterval) clearInterval(companionTickInterval);
+            companionTickInterval = setInterval(() => {
+                if (companionStartTime.value) {
+                    companionElapsed.value = Math.floor((Date.now() - companionStartTime.value) / 1000);
+                }
+            }, 200);
+            if (settings.soundEnabled && audioCtx) {
+                try {
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.connect(gain); gain.connect(audioCtx.destination);
+                    osc.type = 'sine'; osc.frequency.value = 330;
+                    gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.2);
+                    osc.start(); osc.stop(audioCtx.currentTime + 0.2);
+                } catch(e){}
+            }
+        };
+
+        const stopCompanion = () => {
+            if (!companionRunning.value) return;
+            companionRunning.value = false;
+            if (companionTickInterval) { clearInterval(companionTickInterval); companionTickInterval = null; }
+            const duration = companionElapsed.value;
+            const startTime = companionStartTime.value;
+            companionStartTime.value = null;
+            const delay = Math.floor(Math.random() * (7000 - 3000 + 1)) + 3000;
+            playTone('companionEnd');
+            companionReplyTimeout = setTimeout(() => {
+                let pool = [];
+                replyGroups.value.forEach(g => g.replies.forEach(r => {
+                    if (r.enabled && r.text.trim()) pool.push(r.text.trim());
+                }));
+                if (pool.length === 0) {
+                    companionReplyCards.value = ['……'];
+                } else {
+                    const count = Math.floor(Math.random() * 4) + 2;
+                    const shuffled = [...pool].sort(() => Math.random() - 0.5);
+                    companionReplyCards.value = shuffled.slice(0, count);
+                }
+                companionReplyText.value = companionReplyCards.value.join(' ');
+                companionHistory.value.unshift({
+                    id: genId(),
+                    startTime: startTime || Date.now(),
+                    duration: duration,
+                    replyCards: [...companionReplyCards.value]
+                });
+                debouncedSave();
+                if (settings.soundEnabled && audioCtx) {
+                    try {
+                        const osc = audioCtx.createOscillator();
+                        const gain = audioCtx.createGain();
+                        osc.connect(gain); gain.connect(audioCtx.destination);
+                        osc.type = 'sine'; osc.frequency.value = 660;
+                        gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+                        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.25);
+                        osc.start(); osc.stop(audioCtx.currentTime + 0.25);
+                    } catch(e){}
+                }
+            }, delay);
+        };
+
+        const deleteCompanionRecord = (id) => {
+            if (!confirm('删除这条陪伴记录？')) return;
+            companionHistory.value = companionHistory.value.filter(r => r.id !== id);
+            debouncedSave();
+        };
+
+        // 生命周期
+        onMounted(async()=>{ 
+            try{ 
+                let stored = null;
+                try {
+                    stored = await localforage.getItem(STORAGE_KEY);
+                } catch (e) {
+                    console.warn('localforage 读取失败，尝试 localStorage', e);
+                }
+                if (!stored) {
+                    const raw = localStorage.getItem(STORAGE_KEY);
+                    if (raw) {
+                        try { stored = JSON.parse(raw); } catch (e) { console.warn('localStorage 数据解析失败', e); }
+                    }
+                }
+                if (!stored) {
+                    const backupRaw = localStorage.getItem(STORAGE_KEY + '_backup');
+                    if (backupRaw) {
+                        try { stored = JSON.parse(backupRaw); } catch (e) { console.warn('备份数据解析失败', e); }
+                    }
+                }
+                if(stored){ 
+                    if(stored.messages) messages.value = stored.messages; 
+                    if(stored.profiles) { Object.assign(profiles.me, stored.profiles.me || {}); Object.assign(profiles.them, stored.profiles.them || {}); } 
+                    if(stored.settings) Object.assign(settings, stored.settings); 
+                    if(stored.replyGroups) { replyGroups.value = stored.replyGroups; batchImportGroupId.value = stored.replyGroups[0]?.id || ''; } 
+                    if(stored.diaries) diaries.value = stored.diaries; 
+                    if(stored.surveys) surveys.value = stored.surveys; 
+                    if(stored.moments) moments.value = stored.moments; 
+                    if(stored.companionHistory) companionHistory.value = stored.companionHistory; 
+                    if(settings.darkMode) document.documentElement.classList.add('dark'); 
+                } 
+                const draft=localStorage.getItem('liubai_draft'); 
+                if(draft) inputText.value=draft; 
+                updateUnread(); 
+                applyCSS(); 
+                if(settings.soundEnabled) audioCtx=new (window.AudioContext||window.webkitAudioContext)(); 
+                manageActiveTimer(); 
+                setTimeout(()=>{ showIntro.value=false; }, 2800); 
+                document.addEventListener('click',()=>{ if(settings.soundEnabled && audioCtx?.state==='suspended') audioCtx.resume(); }, {once:true}); 
+                nextTick(()=>{ if(window.lucide) lucide.createIcons(); }); 
+                setInterval(() => {
+                    checkDiariesForReply();
+                    checkSurveysForReply();
+                    checkMomentsForReply();
+                }, 60000);
+            }catch(e){ console.warn('加载数据失败', e); } 
+        });
+        onUnmounted(()=>{ 
+            if(activeTimer) clearInterval(activeTimer); 
+            if(diaryCheckInterval) clearInterval(diaryCheckInterval); 
+            if(surveyCheckInterval) clearInterval(surveyCheckInterval); 
+            if(momentCheckInterval) clearInterval(momentCheckInterval); 
+            if(companionTickInterval) clearInterval(companionTickInterval); 
+            if(companionReplyTimeout) clearTimeout(companionReplyTimeout); 
+            // 清理字卡定时器
+            pendingCardTimers.forEach(t => clearTimeout(t));
+            pendingCardTimers = [];
+        });
+        
+        return { 
+            showIntro, currentView, unreadCount, messages, inputText, isTyping, profiles, settings, replyGroups, libSearchQuery, selectedRepliesArr, chatState, statData, switchView, handleSend, forceReply, deleteMsg, editName, editAvatar, saveDraft, shouldShowAvatar, formatTime, highlightText, toggleSearch, executeSearch, jumpSearch, captureScreenshot, toggleDarkMode, toggleSound, uploadBgToLibrary, setBg, removeBg, appBgStyle, clearChat, addGroup, deleteGroup, addReplyToGroup, batchDelete, batchToggle, exportLibrary, importLibrary, debouncedSave, toggleReplyEnable, filteredGroups,
+            // 批量导入相关
+            showBatchImport, batchImportText, batchImportGroupId, batchLineCount, toggleBatchImport, clearBatchImport, importBatchLines,
+            // 日记相关
+            diaries, newDiaryText, addDiary, deleteDiary, getRemainingTime, formatDiaryTime,
+            // 问卷相关
+            surveys, newSurvey, addQuestion, removeQuestion, addOption, removeOption, canSendSurvey, sendSurvey, deleteSurvey, getSurveyRemainingTime,
+            // 朋友圈相关
+            moments, newMomentText, newMomentImages, canPublishMoment, handleMomentImageUpload, removeMomentImage, publishMoment, deleteMoment, getMomentRemainingTime,
+            // 陪伴相关
+            companionRunning, companionElapsed, companionReplyText, companionReplyCards, companionHistory, formatCompanionTime, startCompanion, stopCompanion, deleteCompanionRecord,
+            // 数据管理相关
+            exportAllData, importAllData, confirmClearAllData
+        };
+    }
+}).mount('#app');
+</script>
+</body>
+</html>
